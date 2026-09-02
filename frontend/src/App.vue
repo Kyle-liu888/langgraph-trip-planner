@@ -3,15 +3,15 @@
     <a-layout class="app-layout">
       <a-layout-header class="app-header">
         <div class="app-brand">
-          <span class="brand-mark">H</span>
-          <span>HelloAgents 智能旅行助手</span>
+          <span class="brand-mark">L</span>
+          <span>LangGraph 智能旅行助手</span>
         </div>
       </a-layout-header>
       <a-layout-content class="app-content">
         <router-view />
       </a-layout-content>
       <a-layout-footer class="app-footer">
-        HelloAgents 智能旅行助手 ©2026
+        LangGraph 智能旅行助手 ©2026
       </a-layout-footer>
     </a-layout>
   </div>

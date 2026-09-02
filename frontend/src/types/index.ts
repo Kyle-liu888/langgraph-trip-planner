@@ -51,7 +51,7 @@ export interface DayPlan {
   description: string
   transportation: string
   accommodation: string
-  hotel?: Hotel
+  hotel?: Hotel | null
   attractions: Attraction[]
   meals: Meal[]
 }
@@ -60,8 +60,8 @@ export interface WeatherInfo {
   date: string
   day_weather: string
   night_weather: string
-  day_temp: number
-  night_temp: number
+  day_temp: number | string
+  night_temp: number | string
   wind_direction: string
   wind_power: string
 }
@@ -109,4 +109,14 @@ export interface TripPlanResponse {
   success: boolean
   message: string
   data?: TripPlan
+  metadata: {
+    provider?: string
+    model?: string
+    structured_strategy?: string
+    attempts?: number
+    selected_attempt?: number
+    candidate_count?: number
+    rerank_score?: number
+    usage?: Record<string, unknown>
+  }
 }
