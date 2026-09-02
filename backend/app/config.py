@@ -1,109 +1,99 @@
-"""配置管理模块"""
+"""Application configuration loaded from ``backend/.env``."""
 
-import os
+from __future__ import annotations
+
+from functools import lru_cache
 from pathlib import Path
-from typing import List
-from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
+from typing import Any
 
-# 加载环境变量
-# 首先尝试加载当前目录的.env
-load_dotenv()
+from pydantic import AliasChoices, Field, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 然后尝试加载HelloAgents的.env(如果存在)
-helloagents_env = Path(__file__).parent.parent.parent.parent / "HelloAgents" / ".env"
-if helloagents_env.exists():
-    load_dotenv(helloagents_env, override=False)  # 不覆盖已有的环境变量
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
-    """应用配置"""
+    """Runtime settings with provider-neutral LLM names."""
 
-    # 应用基本配置
-    app_name: str = "HelloAgents智能旅行助手"
-    app_version: str = "1.0.0"
+    model_config = SettingsConfigDict(
+        env_file=BACKEND_DIR / ".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    app_name: str = "LangGraph 智能旅行助手"
+    app_version: str = "2.0.0"
     debug: bool = False
-
-    # 服务器配置
     host: str = "0.0.0.0"
-    port: int = 7000
+    port: int = 8000
+    cors_origins: str = (
+        "http://localhost:5173,http://localhost:3000,"
+        "http://127.0.0.1:5173,http://127.0.0.1:3000"
+    )
 
-    # CORS配置 - 使用字符串,在代码中分割
-    cors_origins: str = "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000"
+    amap_api_key: SecretStr | None = None
+    unsplash_access_key: SecretStr | None = None
+    unsplash_secret_key: SecretStr | None = None
 
-    # 高德地图API配置
-    amap_api_key: str = ""
+    llm_provider: str = "openai_compatible"
+    llm_model: str = Field(
+        default="deepseek-chat",
+        validation_alias=AliasChoices("LLM_MODEL", "LLM_MODEL_ID"),
+    )
+    llm_api_key: SecretStr | None = None
+    llm_base_url: str | None = None
+    llm_temperature: float = Field(default=0.2, ge=0, le=2)
+    llm_timeout: float = Field(default=90, gt=0)
+    llm_max_retries: int = Field(default=2, ge=0, le=10)
+    llm_structured_output_mode: str = "auto"
+    llm_thinking_mode: str = "auto"
+    llm_model_kwargs: dict[str, Any] = Field(default_factory=dict)
 
-    # Unsplash API配置
-    unsplash_access_key: str = ""
-    unsplash_secret_key: str = ""
-
-    # LLM配置 (从环境变量读取,由HelloAgents管理)
-    openai_api_key: str = ""
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_model: str = "gpt-4"
-
-    # 日志配置
+    planner_max_attempts: int = Field(default=3, ge=1, le=10)
+    planner_request_timeout: int = Field(default=600, gt=0)
+    planner_enable_rerank: bool = True
+    planner_rerank_candidate_count: int = Field(default=3, ge=1, le=10)
+    planner_rerank_temperature_step: float = Field(default=0.08, ge=0, le=1)
     log_level: str = "INFO"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"  # 忽略额外的环境变量
+    def get_cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
-    def get_cors_origins_list(self) -> List[str]:
-        """获取CORS origins列表"""
-        return [origin.strip() for origin in self.cors_origins.split(',')]
+    def secret_value(self, field_name: str) -> str:
+        value = getattr(self, field_name, None)
+        return value.get_secret_value() if isinstance(value, SecretStr) else ""
 
 
-# 创建全局配置实例
-settings = Settings()
-
-
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """获取配置实例"""
-    return settings
+    return Settings()
 
 
-# 验证必要的配置
-def validate_config():
-    """验证配置是否完整"""
-    errors = []
-    warnings = []
-
-    if not settings.amap_api_key:
-        errors.append("AMAP_API_KEY未配置")
-
-    # HelloAgentsLLM会自动从LLM_API_KEY读取,不强制要求OPENAI_API_KEY
-    llm_api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not llm_api_key:
-        warnings.append("LLM_API_KEY或OPENAI_API_KEY未配置,LLM功能可能无法使用")
-
+def validate_config(settings: Settings | None = None) -> bool:
+    current = settings or get_settings()
+    errors: list[str] = []
+    if not current.secret_value("amap_api_key"):
+        errors.append("AMAP_API_KEY 未配置")
+    if current.llm_provider.lower() not in {"ollama", "fake"} and not current.secret_value("llm_api_key"):
+        errors.append("LLM_API_KEY 未配置")
+    if not current.llm_model.strip():
+        errors.append("LLM_MODEL 未配置")
     if errors:
-        error_msg = "配置错误:\n" + "\n".join(f"  - {e}" for e in errors)
-        raise ValueError(error_msg)
-
-    if warnings:
-        print("\n⚠️  配置警告:")
-        for w in warnings:
-            print(f"  - {w}")
-
+        raise ValueError("配置错误:\n" + "\n".join(f"  - {item}" for item in errors))
     return True
 
 
-# 打印配置信息(用于调试)
-def print_config():
-    """打印当前配置(隐藏敏感信息)"""
-    print(f"应用名称: {settings.app_name}")
-    print(f"版本: {settings.app_version}")
-    print(f"服务器: {settings.host}:{settings.port}")
-    print(f"高德地图API Key: {'已配置' if settings.amap_api_key else '未配置'}")
-
-    # 检查LLM配置
-    llm_api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-    llm_base_url = os.getenv("LLM_BASE_URL") or settings.openai_base_url
-    llm_model = os.getenv("LLM_MODEL_ID") or settings.openai_model
-    print(f"LLM API Key: {'已配置' if llm_api_key else '未配置'}")
-    print(f"LLM Base URL: {llm_base_url}")
-    print(f"LLM Model: {llm_model}")
-    print(f"日志级别: {settings.log_level}")
+def print_config(settings: Settings | None = None) -> None:
+    current = settings or get_settings()
+    print(f"应用名称: {current.app_name}")
+    print(f"版本: {current.app_version}")
+    print(f"服务器: {current.host}:{current.port}")
+    print(f"高德地图 API Key: {'已配置' if current.secret_value('amap_api_key') else '未配置'}")
+    print(f"LLM Provider: {current.llm_provider}")
+    print(f"LLM Model: {current.llm_model}")
+    print(f"LLM API Key: {'已配置' if current.secret_value('llm_api_key') else '未配置'}")
+    print(f"LLM Base URL: {current.llm_base_url or '供应商默认地址'}")
+    print(f"结构化输出模式: {current.llm_structured_output_mode}")
+    print(f"日志级别: {current.log_level}")
