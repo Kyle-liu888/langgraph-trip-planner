@@ -15,12 +15,12 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    print(f"\n🚀 {settings.app_name} v{settings.app_version}")
+    print(f"\n[INFO] {settings.app_name} v{settings.app_version}")
     print_config(settings)
     validate_config(settings)
-    print(f"📚 API 文档: http://localhost:{settings.port}/docs")
+    print(f"[INFO] API 文档: http://localhost:{settings.port}/docs")
     yield
-    print("\n👋 LangGraph 旅行助手已关闭")
+    print("\n[INFO] LangGraph 旅行助手已关闭")
 
 
 app = FastAPI(

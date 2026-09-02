@@ -81,7 +81,7 @@ class PlannerContextBuilder:
                     )
                 except Exception as exc:
                     context["tool_snapshot"]["tool_status"][name] = self._tool_status(False, str(exc))
-                    print(f"⚠️  {name}工具快照获取失败: {exc}")
+                    print(f"[WARN] {name}工具快照获取失败: {exc}")
 
         # 当前主线不生成粗糙路线 hint：直接把酒店/景点/餐饮候选的
         # address、district 和 location 交给 Planner 判断动线。

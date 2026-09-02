@@ -71,7 +71,7 @@ def load_high_end_poi_table() -> Dict[str, Any]:
     except FileNotFoundError:
         return {}
     except json.JSONDecodeError as exc:
-        print(f"⚠️  高端POI表解析失败: {path} ({exc})")
+        print(f"[WARN] 高端POI表解析失败: {path} ({exc})")
         return {}
     return data.get("cities") or {}
 

@@ -48,7 +48,7 @@ async def search_poi(
         )
 
     except Exception as e:
-        print(f"❌ POI搜索失败: {str(e)}")
+        print(f"[ERROR] POI搜索失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"POI搜索失败: {str(e)}"
@@ -87,7 +87,7 @@ async def get_weather(
         )
 
     except Exception as e:
-        print(f"❌ 天气查询失败: {str(e)}")
+        print(f"[ERROR] 天气查询失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"天气查询失败: {str(e)}"
@@ -130,7 +130,7 @@ async def plan_route(request: RouteRequest):
         )
 
     except Exception as e:
-        print(f"❌ 路线规划失败: {str(e)}")
+        print(f"[ERROR] 路线规划失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"路线规划失败: {str(e)}"

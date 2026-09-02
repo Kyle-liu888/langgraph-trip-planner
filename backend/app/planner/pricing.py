@@ -390,7 +390,7 @@ def load_attraction_price_table() -> List[Dict[str, Any]]:
     except FileNotFoundError:
         return []
     except Exception as exc:
-        print(f"⚠️  景点票价表读取失败: {path} | {exc}")
+        print(f"[WARN] 景点票价表读取失败: {path} | {exc}")
         return []
     return list(data.get("items") or [])
 

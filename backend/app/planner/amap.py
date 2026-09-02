@@ -249,4 +249,4 @@ class AmapPlannerClient:
             tmp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             tmp_path.replace(path)
         except Exception as exc:
-            print(f"⚠️  {label}缓存写入失败: {exc}")
+            print(f"[WARN] {label}缓存写入失败: {exc}")

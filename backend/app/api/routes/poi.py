@@ -48,7 +48,7 @@ async def get_poi_detail(poi_id: str):
         )
 
     except Exception as e:
-        print(f"❌ 获取POI详情失败: {str(e)}")
+        print(f"[ERROR] 获取POI详情失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"获取POI详情失败: {str(e)}"
@@ -99,7 +99,7 @@ async def search_poi(
         }
 
     except Exception as e:
-        print(f"❌ 搜索POI失败: {str(e)}")
+        print(f"[ERROR] 搜索POI失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"搜索POI失败: {str(e)}"
@@ -141,7 +141,7 @@ async def get_attraction_photo(name: str):
         }
 
     except Exception as e:
-        print(f"❌ 获取景点图片失败: {str(e)}")
+        print(f"[ERROR] 获取景点图片失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"获取景点图片失败: {str(e)}"

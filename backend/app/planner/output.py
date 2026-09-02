@@ -332,10 +332,10 @@ def warn_plan_grounding(trip_plan: TripPlan, planner_context: Dict[str, Any]) ->
 
     if ungrounded_attractions:
         preview = ", ".join(ungrounded_attractions[:5])
-        print(f"⚠️  Planner输出中有未命中工具候选的景点: {preview}")
+        print(f"[WARN] Planner输出中有未命中工具候选的景点: {preview}")
     if ungrounded_hotels:
         preview = ", ".join(ungrounded_hotels[:3])
-        print(f"⚠️  Planner输出中有未命中工具候选的酒店: {preview}")
+        print(f"[WARN] Planner输出中有未命中工具候选的酒店: {preview}")
 
     ungrounded_meals = []
     for day in trip_plan.days:
@@ -347,7 +347,7 @@ def warn_plan_grounding(trip_plan: TripPlan, planner_context: Dict[str, Any]) ->
 
     if ungrounded_meals:
         preview = ", ".join(ungrounded_meals[:5])
-        print(f"⚠️  Planner输出中有未命中餐饮候选的餐饮: {preview}")
+        print(f"[WARN] Planner输出中有未命中餐饮候选的餐饮: {preview}")
 
 
 def enrich_trip_plan_poi_details(trip_plan: TripPlan, planner_context: Dict[str, Any]) -> None:
@@ -385,7 +385,7 @@ def enrich_trip_plan_poi_details(trip_plan: TripPlan, planner_context: Dict[str,
 
     if filled_meal_locations or filled_meal_addresses:
         print(
-            "✅ 已回填餐饮POI信息: "
+            "[INFO] 已回填餐饮POI信息: "
             f"坐标={filled_meal_locations}, 地址={filled_meal_addresses}"
         )
 
