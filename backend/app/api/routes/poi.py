@@ -78,7 +78,7 @@ async def search_poi(
     try:
         role = source_role if source_role in SEARCH_SOURCE_ROLES else "food"
         settings = get_settings()
-        amap_key = settings.amap_api_key
+        amap_key = settings.secret_value("amap_api_key")
         if not amap_key:
             raise ValueError("高德地图API Key未配置")
 

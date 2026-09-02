@@ -1,89 +1,31 @@
-"""旅行规划API路由"""
+"""Travel-planning API routes backed by the compiled LangGraph workflow."""
 
 from fastapi import APIRouter, HTTPException
-from ...models.schemas import (
-    TripRequest,
-    TripPlanResponse,
-)
-from ...agents.trip_planner_agent import get_trip_planner_agent
+
+from ...models.schemas import TripPlanResponse, TripRequest
+from ...services.trip_planner_service import get_trip_planner_service
+
 
 router = APIRouter(prefix="/trip", tags=["旅行规划"])
 
 
-@router.post(
-    "/plan",
-    response_model=TripPlanResponse,
-    summary="生成旅行计划",
-    description="根据用户输入的旅行需求,生成详细的旅行计划"
-)
-async def plan_trip(request: TripRequest):
-    """
-    生成旅行计划
-
-    Args:
-        request: 旅行请求参数
-
-    Returns:
-        旅行计划响应
-    """
+@router.post("/plan", response_model=TripPlanResponse, summary="生成旅行计划")
+async def plan_trip(request: TripRequest) -> TripPlanResponse:
     try:
-        print(f"\n{'='*60}")
-        print("📥 收到旅行规划请求:")
-        print(f"   城市: {request.city}")
-        print(f"   日期: {request.start_date} - {request.end_date}")
-        print(f"   天数: {request.travel_days}")
-        print(f"{'='*60}\n")
-
-        # 获取Agent实例
-        print("🔄 获取多智能体系统实例...")
-        agent = get_trip_planner_agent()
-
-        # 生成旅行计划
-        print("🚀 开始生成旅行计划...")
-        trip_plan = agent.plan_trip(request)
-        generation_status = getattr(agent, "last_generation_status", "unknown")
-        generation_message = getattr(agent, "last_generation_message", "") or "旅行计划生成完成"
-
-        if generation_status == "fallback_success":
-            print(f"⚠️  {generation_message}, 准备返回fallback响应\n")
-        else:
-            print(f"✅ {generation_message}, 准备返回响应\n")
-
+        result = await get_trip_planner_service().plan_trip(request)
         return TripPlanResponse(
             success=True,
-            message=generation_message,
-            data=trip_plan
+            message=result["generation_message"],
+            data=result["trip_plan"],
+            metadata=result.get("model_metadata", {}),
         )
-
-    except Exception as e:
-        print(f"❌ 生成旅行计划失败: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"生成旅行计划失败: {str(e)}"
-        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"生成旅行计划失败: {exc}") from exc
 
 
-@router.get(
-    "/health",
-    summary="健康检查",
-    description="检查旅行规划服务是否正常"
-)
-async def health_check():
-    """健康检查"""
+@router.get("/health", summary="检查规划图和模型配置")
+async def health_check() -> dict:
     try:
-        # 检查Agent是否可用
-        agent = get_trip_planner_agent()
-
-        return {
-            "status": "healthy",
-            "service": "trip-planner",
-            "agent_name": agent.agent.name,
-            "tools_count": len(agent.agent.list_tools())
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"服务不可用: {str(e)}"
-        )
+        return get_trip_planner_service().describe()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"服务不可用: {exc}") from exc

@@ -10,7 +10,7 @@ class UnsplashService:
     def __init__(self):
         """初始化服务"""
         settings = get_settings()
-        self.access_key = settings.unsplash_access_key
+        self.access_key = settings.secret_value("unsplash_access_key")
         self.base_url = "https://api.unsplash.com"
 
     def search_photos(self, query: str, per_page: int = 5) -> List[dict]:
