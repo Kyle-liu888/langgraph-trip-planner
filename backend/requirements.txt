@@ -12,6 +12,6 @@ langgraph-checkpoint-postgres>=3.0,<4.0
 sqlalchemy[asyncio]>=2.0,<3.0
 alembic>=1.14,<2.0
 psycopg[binary,pool]>=3.2,<4.0
-pyjwt[crypto]>=2.10,<3.0
+argon2-cffi>=25.1,<26.0
 langchain-openai>=1.0,<2.0
 langchain-deepseek>=1.0,<2.0

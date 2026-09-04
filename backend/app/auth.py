@@ -1,51 +1,82 @@
-"""Supabase JWT authentication using cached public signing keys, never user IDs from input."""
-import asyncio
+"""Local opaque sessions, origin checking and synchronizer CSRF protection."""
+import hashlib
+import hmac
+import time
 from dataclasses import dataclass
-from functools import lru_cache
-from uuid import UUID
+from datetime import timezone
 
-import jwt
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request
 
 from .config import get_settings
+from .database import Account, LoginSession
+
+SESSION_COOKIE = "trip_session"
+CSRF_COOKIE = "trip_login_csrf"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 @dataclass(frozen=True)
 class User:
     id: str
     expires_at: int
+    email: str = ""
+    session_hash: str = ""
 
 
-bearer = HTTPBearer(auto_error=False)
+def digest(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
-@lru_cache(maxsize=8)
-def jwks_client(url: str) -> jwt.PyJWKClient:
-    return jwt.PyJWKClient(url, cache_jwk_set=True, lifespan=300, timeout=10)
+def csrf_for(token: str) -> str:
+    return hmac.new(token.encode(), b"trip-csrf-v1", hashlib.sha256).hexdigest()
 
 
-def verify_token(token: str, url: str, audience: str) -> User:
-    issuer = url.rstrip("/") + "/auth/v1"
-    key = jwks_client(issuer + "/.well-known/jwks.json").get_signing_key_from_jwt(token)
-    claims = jwt.decode(token, key.key, algorithms=["RS256", "ES256"],
-                        issuer=issuer, audience=audience,
-                        options={"require": ["sub", "exp", "iss", "aud"]})
-    if claims.get("role") != "authenticated" or claims.get("is_anonymous"):
-        raise jwt.InvalidTokenError("Registered user required")
-    return User(str(UUID(claims["sub"])), int(claims["exp"]))
+def sessions_for(request: Request):
+    sessions = getattr(request.app.state, "auth_sessions", None)
+    if sessions is None:
+        raise HTTPException(503, {"code": "STORAGE_NOT_READY", "message": "本地数据库尚未就绪，请检查数据库迁移和后端日志"})
+    return sessions
 
 
-async def require_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> User:
-    if not credentials:
-        raise HTTPException(401, {"code": "UNAUTHENTICATED", "message": "请先登录"})
-    settings = get_settings()
-    if not settings.supabase_url:
-        raise HTTPException(503, {"code": "AUTH_NOT_CONFIGURED", "message": "请先配置 Supabase 项目地址"})
-    try:
-        return await asyncio.to_thread(verify_token, credentials.credentials,
-                                       settings.supabase_url, settings.supabase_jwt_audience)
-    except jwt.PyJWKClientConnectionError:
-        raise HTTPException(503, {"code": "AUTH_UNAVAILABLE", "message": "暂时无法连接登录服务，请稍后重试"}) from None
-    except (jwt.PyJWTError, ValueError, KeyError, TypeError):
-        raise HTTPException(401, {"code": "INVALID_SESSION", "message": "登录已失效，请重新登录"}) from None
+def check_origin(request: Request):
+    if request.headers.get("origin") not in get_settings().get_cors_origins_list():
+        raise HTTPException(403, {"code": "UNTRUSTED_ORIGIN", "message": "请求来源未被允许，请从本地前端访问"})
+
+
+def check_csrf(request: Request, expected: str):
+    check_origin(request)
+    supplied = request.headers.get("x-csrf-token", "")
+    if not expected or not supplied.isascii() or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(403, {"code": "CSRF_FAILED", "message": "页面安全凭据已失效，请刷新后重试"})
+
+
+async def lookup_user(request: Request) -> User | None:
+    token = request.cookies.get(SESSION_COOKIE, "")
+    if not token or len(token) > 256:
+        return None
+    async with sessions_for(request)() as db:
+        session = await db.get(LoginSession, digest(token))
+        if not session:
+            return None
+        expires = int(session.expires_at.replace(tzinfo=timezone.utc).timestamp())
+        account = await db.get(Account, session.user_id) if expires > time.time() else None
+        if account:
+            return User(account.id, expires, account.email, session.token_hash)
+    return None
+
+
+async def require_user(request: Request) -> User:
+    user = await lookup_user(request)
+    if user is None:
+        raise HTTPException(401, {"code": "UNAUTHENTICATED", "message": "请先登录或重新登录"})
+    if request.method not in SAFE_METHODS:
+        check_csrf(request, csrf_for(request.cookies[SESSION_COOKIE]))
+    return user
+
+
+async def session_alive(request: Request, user: User) -> bool:
+    """Recheck durable revocation before emitting each SSE batch."""
+    if time.time() >= user.expires_at or not user.session_hash:
+        return False
+    current = await lookup_user(request)
+    return current is not None and current.session_hash == user.session_hash

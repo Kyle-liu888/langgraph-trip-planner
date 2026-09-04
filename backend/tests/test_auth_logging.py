@@ -1,36 +1,15 @@
 import json
 import logging
-import time
-from types import SimpleNamespace
-from unittest.mock import patch
-from uuid import uuid4
-
-import jwt
-import pytest
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 
-from app.auth import verify_token
+from app.auth import csrf_for, digest
 from app.observability import SafeFormatter, log_context
 
 
-def test_jwt_signature_owner_issuer_audience_and_expiration():
-    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    user_id = str(uuid4())
-    claims = {'sub': user_id, 'exp': int(time.time()) + 60, 'iss': 'https://example.supabase.co/auth/v1',
-              'aud': 'authenticated', 'role': 'authenticated'}
-    client = SimpleNamespace(get_signing_key_from_jwt=lambda token: SimpleNamespace(key=private.public_key()))
-    with patch('app.auth.jwks_client', return_value=client):
-        token = jwt.encode(claims, private, algorithm='RS256')
-        assert verify_token(token, 'https://example.supabase.co', 'authenticated').id == user_id
-        for invalid in ({'exp': 0}, {'iss': 'https://attacker.example/auth/v1'}, {'aud': 'other'},
-                        {'role': 'anon'}, {'is_anonymous': True}, {'sub': 'not-a-uuid'}):
-            bad = jwt.encode({**claims, **invalid}, private, algorithm='RS256')
-            with pytest.raises((jwt.InvalidTokenError, ValueError)):
-                verify_token(bad, 'https://example.supabase.co', 'authenticated')
-        with pytest.raises(jwt.InvalidSignatureError):
-            wrong_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-            verify_token(jwt.encode(claims, wrong_key, algorithm='RS256'), 'https://example.supabase.co', 'authenticated')
+def test_session_and_csrf_hashes_are_domain_separated():
+    assert len(digest('opaque-session')) == 64
+    assert csrf_for('opaque-session') != digest('opaque-session')
+    assert csrf_for('opaque-session') != csrf_for('another-session')
 
 
 def test_log_redacts_secrets_and_does_not_dump_exception_input():

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_, select
 
-from ...auth import User, require_user
+from ...auth import User, require_user, session_alive
 from ...database import DailyUsage, Trip, TripEvent, iso, now, serialize_trip
 from ...models.schemas import TripPlan, TripRequest
 from ...services.run_manager import ACTIVE, RunManager, problem
@@ -21,7 +21,7 @@ router = APIRouter(tags=["行程与进度"])
 def manager(request: Request) -> RunManager:
     value = getattr(request.app.state, "run_manager", None)
     if value is None:
-        raise problem(503, "STORAGE_NOT_READY", "数据库尚未就绪，请配置 Supabase DATABASE_URL 并执行数据库迁移")
+        raise problem(503, "STORAGE_NOT_READY", "本地数据库尚未就绪，请配置 DATABASE_URL 并执行数据库迁移")
     return value
 
 
@@ -121,7 +121,7 @@ async def events(trip_id: UUID, request: Request, last_event_id: int = Header(0,
     async def stream():
         cursor = last_event_id
         while not await request.is_disconnected():
-            if time.time() >= user.expires_at:
+            if not await session_alive(request, user):
                 yield 'event: session.expired\ndata: {}\n\n'
                 return
             # Clear before querying: a concurrent commit cannot be missed while waiting.

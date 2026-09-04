@@ -142,7 +142,10 @@ def test_fallback_and_revision_conflict(tmp_path):
     asyncio.run(scenario())
 
 
-def test_authenticated_api_history_sse_replay_and_expiry(tmp_path):
+def test_authenticated_api_history_sse_replay_and_expiry(tmp_path, monkeypatch):
+    async def mock_live(request, user):
+        return time.time() < user.expires_at
+    monkeypatch.setattr('app.api.routes.trips.session_alive', mock_live)
     async def scenario():
         async with system(tmp_path) as runs:
             app = FastAPI()

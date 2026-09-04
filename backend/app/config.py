@@ -61,8 +61,7 @@ class Settings(BaseSettings):
     log_file_enabled: bool = True
     log_dir: Path = BACKEND_DIR / "logs"
     database_url: SecretStr | None = None
-    supabase_url: str = ""
-    supabase_jwt_audience: str = "authenticated"
+    session_cookie_secure: bool = False
     daily_trip_limit: int = Field(default=3, ge=1)
     max_concurrent_runs: int = Field(default=2, ge=1, le=8)
     max_resume_attempts: int = Field(default=3, ge=0, le=10)

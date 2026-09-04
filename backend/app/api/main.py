@@ -20,7 +20,7 @@ from ..observability import configure_logging, log_context, logger
 from ..services.run_manager import RunManager
 from ..services.trip_planner_service import TripPlannerService
 from .routes import map as map_routes
-from .routes import poi, trips
+from .routes import auth, poi, trips
 
 
 settings = get_settings()
@@ -30,6 +30,7 @@ settings = get_settings()
 async def lifespan(application: FastAPI):
     configure_logging(settings)
     application.state.run_manager = None
+    application.state.auth_sessions = None
     engine = None
     async with AsyncExitStack() as stack:
         stage = "configuration"
@@ -40,6 +41,8 @@ async def lifespan(application: FastAPI):
                 engine, sessions = create_database(url)
                 async with engine.connect() as db:
                     await db.execute(text("SELECT id FROM trips LIMIT 0"))
+                    await db.execute(text("SELECT id FROM accounts LIMIT 0"))
+                    await db.execute(text("SELECT token_hash FROM login_sessions LIMIT 0"))
                 connection = await stack.enter_async_context(await AsyncConnection.connect(
                     url, autocommit=True, prepare_threshold=0, row_factory=dict_row,
                     connect_timeout=10))
@@ -48,6 +51,7 @@ async def lifespan(application: FastAPI):
                 cursor = await connection.execute("SELECT pg_try_advisory_lock(732981204) AS acquired")
                 if not (await cursor.fetchone())["acquired"]:
                     raise RuntimeError("Another planner process owns the database")
+                application.state.auth_sessions = sessions
                 stage = "checkpoint_tables"
                 saver = AsyncPostgresSaver(connection)
                 await saver.setup()
@@ -89,6 +93,7 @@ app.add_middleware(
     expose_headers=["X-Request-ID"],
 )
 app.include_router(trips.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 app.include_router(poi.router, prefix="/api", dependencies=[Depends(require_user)])
 app.include_router(map_routes.router, prefix="/api", dependencies=[Depends(require_user)])
 
@@ -153,7 +158,7 @@ async def health() -> dict:
     return {
         "status": "healthy" if ready else "degraded",
         "storage_ready": ready,
-        "auth_configured": bool(settings.supabase_url),
+        "auth_configured": getattr(app.state, "auth_sessions", None) is not None,
         "service": settings.app_name,
         "version": settings.app_version,
     }
