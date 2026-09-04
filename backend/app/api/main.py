@@ -42,7 +42,9 @@ async def lifespan(application: FastAPI):
                     await db.execute(text("SELECT id FROM trips LIMIT 0"))
                 connection = await stack.enter_async_context(await AsyncConnection.connect(
                     url, autocommit=True, prepare_threshold=0, row_factory=dict_row,
-                    connect_timeout=10, options="-c search_path=planner_internal"))
+                    connect_timeout=10))
+                # SET works with session poolers without requiring startup-option forwarding.
+                await connection.execute("SET search_path TO planner_internal")
                 cursor = await connection.execute("SELECT pg_try_advisory_lock(732981204) AS acquired")
                 if not (await cursor.fetchone())["acquired"]:
                     raise RuntimeError("Another planner process owns the database")
