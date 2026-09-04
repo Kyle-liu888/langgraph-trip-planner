@@ -12,6 +12,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DEV = Path.home() / "dev"
@@ -214,6 +215,30 @@ def backup_all():
             old.unlink()
             old.with_suffix(".sha256").unlink(missing_ok=True)
         print(f"Backup verified: {final} (keep newest 14 per database)")
+    backup_configuration()
+
+
+def backup_configuration():
+    directory = BACKUPS.parent / "config"
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    path = directory / f"{stamp}.tar.gz.partial"
+    with tarfile.open(path, "x:gz") as archive:
+        for source in sorted(CONFIG.iterdir()):
+            if source.is_file() and not source.is_symlink():
+                archive.add(source, arcname=source.name)
+        if LOCK.exists():
+            archive.add(LOCK, arcname="images.lock.env")
+    with tarfile.open(path, "r:gz") as archive:
+        for member in archive.getmembers():
+            if member.isfile():
+                archive.extractfile(member).read()  # Validate compression without extracting secrets.
+    path.rename(directory / f"{stamp}.tar.gz")
+    for old in sorted(directory.glob("*.tar.gz"), reverse=True)[14:]:
+        if old.parent.resolve() != directory.resolve():
+            raise RuntimeError("Unsafe configuration backup path.")
+        old.unlink()
+    print("Private configuration archive verified. Keep the D-drive backup directory access-restricted.")
 
 
 def restore(source, target):
@@ -250,6 +275,9 @@ def project_up():
         raise RuntimeError("Dev Container local environment differs; review before updating.")
     if not dev_env.exists():
         write_private(dev_env, content)
+    if existing:
+        print("Workspace is already running; no rebuild or dependency reinstall was performed.")
+        return
     run(compose("project", "up", "-d", "--build"))
     run(compose("project", "exec", "-T", "workspace", "bash", "scripts/container-setup.sh"))
     print("Open this Linux folder in VS Code, then Reopen in Container. Run migration/backend/frontend tasks separately.")
@@ -265,10 +293,17 @@ def status():
             print(f"{name}: active planner jobs={active}")
 
 
-def verify_postgres():
-    name = "test_trip_" + dt.datetime.now().strftime("%Y%m%d%H%M%S")
-    value = new_database(name)
-    other = new_database(name + "_other")
+def verify_postgres(name=None):
+    if name is None:
+        name = "test_trip_" + dt.datetime.now().strftime("%Y%m%d%H%M%S")
+        value = new_database(name)
+        other = new_database(name + "_other")
+    else:
+        identifier(name)
+        if not name.startswith("test_"):
+            raise ValueError("Only dedicated test_* databases may be reused for acceptance.")
+        registered = {item["database"]: item for item in records()}
+        value, other = registered[name], registered[name + "_other"]
     code = """
 import json, os, sys
 import psycopg
@@ -284,8 +319,10 @@ command.upgrade(Config('alembic.ini'), 'head')
 try:
     with psycopg.connect(url.rsplit('/', 1)[0] + '/' + data['other']):
         raise AssertionError('Cross-project access unexpectedly allowed')
-except psycopg.errors.InsufficientPrivilege:
-    pass
+except psycopg.OperationalError as error:
+    # Connect-time FATAL can be OperationalError rather than a SQL statement subclass.
+    if 'permission denied for database' not in str(error):
+        raise RuntimeError('Cross-project probe failed for an unexpected reason') from None
 with psycopg.connect(url) as db:
     flags = db.execute('SELECT rolsuper, rolcreatedb, rolcreaterole, rolbypassrls FROM pg_roles WHERE rolname=current_user').fetchone()
     assert flags == (False, False, False, False)
@@ -298,11 +335,19 @@ raise SystemExit(pytest.main(['tests/test_local_postgres.py', '-q']))
     print(f"PostgreSQL acceptance databases retained: {name}, {other['database']}. No real APIs called.")
 
 
+def stop_trip():
+    running = run(compose('project', 'ps', '--status', 'running', '-q'), capture=True).strip()
+    if running:
+        run(compose('project', 'exec', '-T', 'workspace', 'python', '/workspace/scripts/stop_services.py'))
+    run(compose('project', 'stop'))
+
+
 def stop_all():
     status()
     if input("This stops ALL Docker containers. Type STOP ALL to back up then stop: ") != "STOP ALL":
         raise RuntimeError("Cancelled; nothing stopped.")
     backup_all()  # Any failure prevents all subsequent shutdown steps.
+    stop_trip()
     ids = run(["docker", "ps", "-q"], capture=True).split()
     # Stop apps first, while PostgreSQL is still available to persist interruptions.
     database_id = run(["docker", "inspect", "--format", "{{.Id}}", "local-dev-postgres"], capture=True).strip()
@@ -322,7 +367,7 @@ def main():
     args = parser.parse_args()
     actions = {"setup": setup, "pin-images": pin_images, "infra-up": infra_up, "new-db": new_database,
                "backup": backup_all, "restore": restore, "start": project_up,
-               "stop-trip": lambda: run(compose("project", "stop")),
+               "stop-trip": stop_trip,
                "stop-containers": stop_all, "status": status, "verify-postgres": verify_postgres}
     try:
         actions[args.action](*args.arguments)

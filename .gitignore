@@ -73,4 +73,3 @@ pnpm-debug.log*
 *.vhdx
 *.db
 *.sqlite*
-infra/postgres/images.lock.env
