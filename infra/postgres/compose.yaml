@@ -1,0 +1,35 @@
+name: local-infra
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Run dev.py pin-images; immutable digest required}
+    container_name: local-dev-postgres
+    cpus: 2
+    mem_limit: 2g
+    environment:
+      POSTGRES_USER: dev_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [admin_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:15432:5432"
+    networks: [shared]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_admin -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 60s
+    restart: "no"
+secrets:
+  admin_password:
+    file: ${DEV_CONFIG_DIR:?Run dev.py setup}/postgres-admin-password
+volumes:
+  postgres_data:
+    name: local-dev-postgres-17-data
+networks:
+  shared:
+    external: true
+    name: local-dev

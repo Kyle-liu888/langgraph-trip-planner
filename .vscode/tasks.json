@@ -1,0 +1,10 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "数据库迁移", "type": "shell", "command": "uv run --locked alembic upgrade head", "options": { "cwd": "/workspace/backend" }, "problemMatcher": [] },
+    { "label": "启动后端（含日志）", "type": "shell", "command": "uv run --locked python run.py", "options": { "cwd": "/workspace/backend" }, "problemMatcher": [], "isBackground": true },
+    { "label": "启动前端", "type": "shell", "command": "npm run dev -- --host 0.0.0.0 --strictPort", "options": { "cwd": "/workspace/frontend" }, "problemMatcher": [], "isBackground": true },
+    { "label": "后端测试（模拟模型）", "type": "shell", "command": "uv run --locked pytest", "options": { "cwd": "/workspace/backend" }, "problemMatcher": [] },
+    { "label": "前端测试与构建", "type": "shell", "command": "npm test && npm run build", "options": { "cwd": "/workspace/frontend" }, "problemMatcher": [] }
+  ]
+}

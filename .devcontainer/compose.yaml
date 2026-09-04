@@ -1,0 +1,45 @@
+name: trip-dev
+services:
+  workspace:
+    build:
+      context: .
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:?Run dev.py pin-images first}
+        NODE_IMAGE: ${NODE_IMAGE:?Run dev.py pin-images first}
+        UV_IMAGE: ${UV_IMAGE:?Run dev.py pin-images first}
+    init: true
+    user: "1000:1000"
+    cpus: 4
+    mem_limit: 6g
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:5173:5173"
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ..:/workspace
+      - python_deps:/workspace/backend/.venv
+      - node_deps:/workspace/frontend/node_modules
+      - uv_cache:/home/dev/.cache/uv
+      - npm_cache:/home/dev/.npm
+      - ${DEV_CONFIG_DIR:?Run dev.py setup first}/trip-backend.env:/workspace/backend/.env:ro
+      - ${DEV_CONFIG_DIR}/trip-frontend.env:/workspace/frontend/.env:ro
+    env_file:
+      - ${DEV_CONFIG_DIR}/trip-database.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      VITE_API_BASE_URL: ""
+    networks: [shared]
+    stop_grace_period: 45s
+    restart: "no"
+networks:
+  shared:
+    external: true
+    name: local-dev
+volumes:
+  python_deps:
+  node_deps:
+  uv_cache:
+  npm_cache:

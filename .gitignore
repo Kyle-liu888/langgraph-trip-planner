@@ -7,6 +7,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+!.vscode/tasks.json
 .env
 .env.*
 !.env.example
@@ -66,3 +67,10 @@ pnpm-debug.log*
 *.tgz
 *.rar
 *.7z
+
+# Local database state and backups
+*.dump
+*.vhdx
+*.db
+*.sqlite*
+infra/postgres/images.lock.env
