@@ -386,7 +386,13 @@ import AMapLoader from '@amap/amap-jsapi-loader'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import type { TripPlan } from '@/types'
-import { API_BASE_URL } from '@/services/api'
+import api from '@/services/api'
+import { saveTripPlan, type TripRecord } from '@/services/trips'
+import { useTrips } from '@/stores/trips'
+
+const props = defineProps<{ record: TripRecord }>()
+const revision = ref(props.record.revision)
+const trips = useTrips()
 
 const router = useRouter()
 const tripPlan = ref<TripPlan | null>(null)
@@ -396,6 +402,7 @@ const attractionPhotos = ref<Record<string, string>>({})
 const activeSection = ref('overview')
 const activeDays = ref<number[]>([0]) // 默认展开第一天
 let map: any = null
+let disposed = false
 let AMapApi: any = null
 const dailyMaps = new Map<number, any>()
 
@@ -418,13 +425,14 @@ interface MapPoint {
 }
 
 onMounted(async () => {
-  const data = sessionStorage.getItem('tripPlan')
+  const data = props.record.plan
   if (data) {
-    tripPlan.value = JSON.parse(data)
+    tripPlan.value = JSON.parse(JSON.stringify(data))
     // 加载景点图片
     await loadAttractionPhotos()
     // 回填缺失的餐饮坐标,旧session里的结果也尽量能显示餐厅点位
     await loadMissingMealLocations()
+    if (disposed) return
     // 等待DOM渲染完成后初始化地图
     await nextTick()
     initMaps()
@@ -432,6 +440,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  disposed = true
   destroyMaps()
 })
 
@@ -465,12 +474,14 @@ const toggleEditMode = () => {
 }
 
 // 保存修改
-const saveChanges = () => {
+const saveChanges = async () => {
+  if (!tripPlan.value) return
+  try {
+    const saved = await saveTripPlan(props.record.id, tripPlan.value, revision.value)
+    revision.value = saved.revision
+    trips.upsert(saved)
+  } catch (e) { message.error((e as Error).message); return }
   editMode.value = false
-  // 更新sessionStorage
-  if (tripPlan.value) {
-    sessionStorage.setItem('tripPlan', JSON.stringify(tripPlan.value))
-  }
   message.success('修改已保存')
 
   // 重新初始化地图以反映更改
@@ -568,8 +579,8 @@ const loadAttractionPhotos = async () => {
 
   tripPlan.value.days.forEach(day => {
     day.attractions.forEach(attraction => {
-      const promise = fetch(`${API_BASE_URL}/api/poi/photo?name=${encodeURIComponent(attraction.name)}`)
-        .then(res => res.json())
+      const promise = api.get(`/api/poi/photo?name=${encodeURIComponent(attraction.name)}`)
+        .then(res => res.data)
         .then(data => {
           if (data.success && data.data.photo_url) {
             attractionPhotos.value[attraction.name] = data.data.photo_url
@@ -603,10 +614,10 @@ const loadMissingMealLocations = async () => {
         return
       }
 
-      const promise = fetch(
-        `${API_BASE_URL}/api/poi/search?keywords=${encodeURIComponent(meal.name)}&city=${encodeURIComponent(tripPlan.value!.city)}&source_role=food`
+      const promise = api.get(
+        `/api/poi/search?keywords=${encodeURIComponent(meal.name)}&city=${encodeURIComponent(tripPlan.value!.city)}&source_role=food`
       )
-        .then(res => res.json())
+        .then(res => res.data)
         .then(data => {
           const poi = Array.isArray(data.data)
             ? data.data.find((item: any) => isValidLocation(item.location))
@@ -632,7 +643,7 @@ const loadMissingMealLocations = async () => {
   await Promise.all(promises)
 
   if (updatedCount > 0 && tripPlan.value) {
-    sessionStorage.setItem('tripPlan', JSON.stringify(tripPlan.value))
+    // Read-time map enrichment stays local; explicit Save persists edits with revision checking.
   }
 }
 

@@ -70,6 +70,24 @@ API响应的`metadata`可包含：
 - structured_strategy
 - attempts / selected_attempt / candidate_count
 - rerank_score
-- usage / response_metadata
+- usage（供应商返回时）
 
-密钥不会进入图状态、API响应或日志。
+不暴露供应商原始 response_metadata；运行日志不记录完整 Prompt、JWT、密钥和模型原文。
+
+## 持久化、账号和进度
+
+- Supabase Auth 负责邮箱/GitHub 登录。前端用 publishable key；后端通过固定项目 JWKS 验证用户 JWT，绝不采信请求中的 user_id。
+- `trips` 保存请求、最终结果、状态、版本；`trip_runs` 保存每次执行；`trip_events` 保存可重放事件；`daily_usage` 保存每日额度。
+- 业务表启用 RLS 且没有面向浏览器的访问策略。FastAPI 使用可信数据库 owner 连接，所有资源查询同时过滤行程 ID 与已认证用户 ID。
+- `planner_internal` 私有 schema 存放 LangGraph PostgreSQL checkpointer。可序列化状态只含普通字典/列表；模型对象和凭据只存在 runtime 中。
+- `POST /api/trips` 校验幂等键、活跃任务和额度，提交业务事务后创建独立 asyncio Task。浏览器关闭不会取消任务。
+- 节点/模型埋点通过 LangGraph custom stream 产生安全事件；后端先落库，SSE 再按事件 ID 发送。浏览器重连携带 Last-Event-ID，不重复创建任务。
+- 服务启动时将上次遗留的 queued/running 任务标记 interrupted；用户手动恢复才继续执行同一 thread_id。最新检查点已完成但业务结果未写入时，直接保存结果而不重复调用模型。
+- 运行状态为 queued / running / completed / fallback / failed / interrupted；fallback 有独立警告，不能当作正常模型成功。
+- 版本号 revision 防止结果被两个编辑页面静默覆盖。删除行程会删除业务记录及检查点，不返还已使用额度。
+
+本地版仅支持单后端进程，持有数据库会话 advisory lock，防止第二进程误判正在运行的任务。任务不是分布式队列；数据库连接断开可能需要重启后端再恢复。外部 API 无法保证 exactly-once，中断中的模型调用恢复时可能再次计费。
+
+日志位于 backend/logs/app.log、error.log，并输出到控制台。HTTP 请求关联 request_id，后台执行关联 trip_id / run_id，节点记录 node / attempt / elapsed_ms。异常保留类型和代码栈位置，不记录包含用户输入的完整异常正文。业务数据库和检查点本身仍会保存行程内容。
+
+完整本地配置与测试边界见 [SUPABASE_LOCAL_SETUP.md](SUPABASE_LOCAL_SETUP.md)。

@@ -1,5 +1,6 @@
 import axios from 'axios'
-import type { TripFormData, TripPlanResponse } from '@/types'
+import { accessToken } from './supabase'
+import { useAuth } from '@/stores/auth'
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
 
@@ -9,20 +10,23 @@ export const API_BASE_URL = configuredApiBaseUrl
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 600000, // 10分钟超时
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
   }
 })
+const requestOwners = new WeakMap<object, string | undefined>()
 
 // 请求拦截器
 apiClient.interceptors.request.use(
-  (config) => {
-    console.log('发送请求:', config.method?.toUpperCase(), config.url)
+  async (config) => {
+    const owner = useAuth().user?.id
+    if (config.url?.startsWith('/api/')) config.headers.Authorization = `Bearer ${await accessToken()}`
+    if (owner !== useAuth().user?.id) throw new Error('账号已切换，请重新操作')
+    requestOwners.set(config, owner)
     return config
   },
   (error) => {
-    console.error('请求错误:', error)
     return Promise.reject(error)
   }
 )
@@ -30,30 +34,22 @@ apiClient.interceptors.request.use(
 // 响应拦截器
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('收到响应:', response.status, response.config.url)
+    if (requestOwners.get(response.config) !== useAuth().user?.id)
+      throw new Error('账号已切换，已忽略原账号的请求结果')
     return response
   },
   (error) => {
-    console.error('响应错误:', error.response?.status, error.message)
-    return Promise.reject(error)
+    const detail = error.response?.data?.detail
+    const requestId = error.response?.data?.request_id || error.response?.headers?.['x-request-id']
+    const text = (typeof detail === 'object' ? detail.message : detail) ||
+      (error.response?.status === 401 ? '登录已失效，请重新登录' : error.message) || '请求失败'
+    // Never expose Axios config: it contains the Authorization header.
+    return Promise.reject(new Error(`${text}${requestId ? `（请求编号 ${requestId}）` : ''}`))
   }
 )
 
 /**
  * 生成旅行计划
- */
-export async function generateTripPlan(formData: TripFormData): Promise<TripPlanResponse> {
-  try {
-    const response = await apiClient.post<TripPlanResponse>('/api/trip/plan', formData)
-    return response.data
-  } catch (error: any) {
-    console.error('生成旅行计划失败:', error)
-    throw new Error(error.response?.data?.detail || error.message || '生成旅行计划失败')
-  }
-}
-
-/**
- * 健康检查
  */
 export async function healthCheck(): Promise<any> {
   try {

@@ -24,6 +24,11 @@
       </div>
 
       <a-card class="form-card" :bordered="false">
+        <a-alert v-if="quota" type="info" show-icon style="margin-bottom: 20px">
+          <template #message>今日已创建 {{ quota.used }} / {{ quota.limit }} 次行程（北京时间每日重置）</template>
+          <template #description><router-link v-if="quota.active_trip_id" :to="`/trips/${quota.active_trip_id}`">已有行程正在规划，点击查看进度</router-link><span v-else>模型调用可能产生供应商 API 费用；失败后可在历史行程中继续。</span></template>
+        </a-alert>
+        <a-alert v-if="quotaError" type="warning" show-icon :message="quotaError" style="margin-bottom: 20px" />
         <div class="form-card-header">
           <div>
             <div class="form-eyebrow">Plan Request</div>
@@ -267,22 +272,14 @@
                 <span>开始规划行程</span>
               </template>
               <template v-else>
-                <span>正在生成中...</span>
+                <span>正在提交...</span>
               </template>
             </a-button>
           </a-form-item>
 
           <a-form-item v-if="loading">
             <div class="loading-container">
-              <a-progress
-                :percent="loadingProgress"
-                status="active"
-                :stroke-color="{
-                  '0%': '#0f766e',
-                  '100%': '#2563eb',
-                }"
-                :stroke-width="8"
-              />
+              <a-spin />
               <p class="loading-status">
                 {{ loadingStatus }}
               </p>
@@ -295,7 +292,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -305,14 +302,23 @@ import {
   RocketOutlined,
   TeamOutlined
 } from '@ant-design/icons-vue'
-import { generateTripPlan } from '@/services/api'
+import { createTrip } from '@/services/trips'
+import { useTrips } from '@/stores/trips'
+import api from '@/services/api'
 import type { TripFormData } from '@/types'
 import type { Dayjs } from 'dayjs'
 
 const router = useRouter()
 const loading = ref(false)
-const loadingProgress = ref(0)
+const trips = useTrips()
+let pendingBody = '', pendingKey = ''
 const loadingStatus = ref('')
+const quota = ref<{ used: number; limit: number; active_trip_id: string | null } | null>(null)
+const quotaError = ref('')
+onMounted(async () => {
+  try { quota.value = (await api.get('/api/me/usage')).data }
+  catch (e) { quotaError.value = (e as Error).message }
+})
 
 const companionTypeOptions = [
   { label: '独行', value: 'solo' },
@@ -451,26 +457,7 @@ const handleSubmit = async () => {
   }
 
   loading.value = true
-  loadingProgress.value = 0
-  loadingStatus.value = '正在初始化...'
-
-  // 模拟进度更新
-  const progressInterval = setInterval(() => {
-    if (loadingProgress.value < 90) {
-      loadingProgress.value += 10
-
-      // 更新状态文本
-      if (loadingProgress.value <= 30) {
-        loadingStatus.value = '🔍 正在搜索景点...'
-      } else if (loadingProgress.value <= 50) {
-        loadingStatus.value = '🌤️ 正在查询天气...'
-      } else if (loadingProgress.value <= 70) {
-        loadingStatus.value = '🏨 正在推荐酒店...'
-      } else {
-        loadingStatus.value = '📋 正在生成行程计划...'
-      }
-    }
-  }, 500)
+  loadingStatus.value = '正在提交，提交后可查看实时节点进度…'
 
   try {
     const budgetAmount = formData.budget_constraint.amount
@@ -500,34 +487,16 @@ const handleSubmit = async () => {
       }
     }
 
-    const response = await generateTripPlan(requestData)
-
-    clearInterval(progressInterval)
-    loadingProgress.value = 100
-    loadingStatus.value = '✅ 完成!'
-
-    if (response.success && response.data) {
-      // 保存到sessionStorage
-      sessionStorage.setItem('tripPlan', JSON.stringify(response.data))
-
-      message.success('旅行计划生成成功!')
-
-      // 短暂延迟后跳转
-      setTimeout(() => {
-        router.push('/result')
-      }, 500)
-    } else {
-      message.error(response.message || '生成失败')
-    }
+    const body = JSON.stringify(requestData)
+    if (body !== pendingBody) { pendingBody = body; pendingKey = crypto.randomUUID() }
+    const trip = await createTrip(requestData, pendingKey)
+    trips.upsert(trip)
+    await router.push(`/trips/${trip.id}`)
   } catch (error: any) {
-    clearInterval(progressInterval)
     message.error(error.message || '生成旅行计划失败,请稍后重试')
   } finally {
-    setTimeout(() => {
-      loading.value = false
-      loadingProgress.value = 0
-      loadingStatus.value = ''
-    }, 1000)
+    loading.value = false
+    loadingStatus.value = ''
   }
 }
 </script>

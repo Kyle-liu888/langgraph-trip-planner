@@ -6,14 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
+    "@microsoft/fetch-event-source": "^2.0.1",
+    "@supabase/supabase-js": "^2.115.0",
     "ant-design-vue": "^4.2.6",
     "axios": "^1.20.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "pinia": "^4.0.3",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
@@ -22,6 +26,7 @@
     "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "^5.7.3",
     "vite": "^6.4.3",
+    "vitest": "^3.2.7",
     "vue-tsc": "^2.2.0"
   }
 }
