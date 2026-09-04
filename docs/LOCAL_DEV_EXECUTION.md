@@ -1,5 +1,24 @@
 # 执行记录
 
+## 最新状态：Docker 迁移后的真实验收
+
+- Docker 数据盘已实际迁至 D 盘；Ubuntu 集成已启用，没有安装第二套 Engine。
+- Python 3.13.15、Node 24.18.0、uv 0.11.28、PostgreSQL 17.11 镜像已拉取，明确版本及 registry SHA256 已保存到 `infra/postgres/images.lock.env`。
+- 项目容器以 1000:1000 运行，4 CPU / 6 GiB；数据库 2 CPU / 2 GiB。端口仅发布到 127.0.0.1；未挂载 Docker socket 或 Windows 用户目录。
+- 容器内依赖安装成功；19 项后端测试通过，默认跳过的真实 PostgreSQL 测试另行执行并通过；前端 4 项测试和生产构建通过；基础设施安全测试 6 项通过。
+- PostgreSQL 验收覆盖账号/会话/CSRF/限速、非超级用户和跨库权限隔离、历史编辑、SSE 重放与检查点跨连接恢复。新增了已打开 SSE 连接在退出后失效的回归测试。
+- 备份恢复到新库后，账号、会话、历史和检查点等 12 张表的记录数及内容摘要一致。
+- 重建项目和 PostgreSQL 容器，重新挂载原命名卷后，以上数据保持一致。独立第二项目客户端在旅行助手停止时仍可查询。
+- 正常停服脚本已经实测：先让后端/Vite 退出，日志出现 server.stopped，再停容器；前端端口关闭。
+- 后端 health 为 healthy，storage_ready/auth_configured 为 true；Windows 的 127.0.0.1 可访问前端、后端及前端登录代理。localhost 的 IPv6 路径超时，推荐统一使用 127.0.0.1。
+- 数据库和配置备份已写入 D 盘，备份目录 Windows 权限限定当前用户和 SYSTEM；Linux 配置目录 700、凭据 600。
+- VS Code 官方 Dev Containers 扩展已安装。原 Windows 项目和 main 保持原样。
+- 此前提交已经成功推送到 `codex/local-dev-environment`，之前的 GitHub 连接错误已解除。
+
+**剩余验收：用户当次确认后，退出 Docker、关闭全部 WSL（含 Ollama），验证端口关闭，再重启并核对数据。此项尚未执行。** 没有自动提交真实模型/地图请求。
+
+## 以下为首次实施时的历史记录
+
 本次实现以 `LOCAL_DEV_PLAN.md` 完整计划为准。本文件仅记录执行状态，不替代或压缩计划。
 
 - 原 Windows 工作区保留，Linux 主工作区：`/home/kyle/dev/projects/langgraph-trip-planner`。

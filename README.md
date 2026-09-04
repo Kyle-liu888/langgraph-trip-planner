@@ -71,9 +71,9 @@ python3 scripts/dev.py start
 
 VS Code 打开 Linux 项目后选择 **Reopen in Container**，分别运行“数据库迁移”“启动后端（含日志）”“启动前端”任务。Python 3.13、Node 24、uv 及依赖仅在项目容器中，不复制 Windows 的 .venv/node_modules。
 
-- 界面：`http://localhost:5173`
-- 健康检查：`http://localhost:8000/health`
-- API 文档：`http://localhost:8000/docs`
+- 界面：`http://127.0.0.1:5173`
+- 健康检查：`http://127.0.0.1:8000/health`
+- API 文档：`http://127.0.0.1:8000/docs`
 - 日志：Linux 项目 `backend/logs/app.log` 和 `error.log`
 - 只关项目：`python3 scripts/dev.py stop-trip`；结束全部开发使用需确认的 Windows 脚本，详见手册。
 
