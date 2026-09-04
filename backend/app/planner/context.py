@@ -1,6 +1,8 @@
 """PlannerContext 构造逻辑。"""
 
 import os
+from contextvars import copy_context
+from ..observability import emit_progress, logger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict
 
@@ -69,7 +71,7 @@ class PlannerContextBuilder:
         }
 
         with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(func, request): name for name, func in jobs.items()}
+            futures = {executor.submit(copy_context().run, func, request): name for name, func in jobs.items()}
             for future in as_completed(futures):
                 name = futures[future]
                 try:
@@ -79,9 +81,11 @@ class PlannerContextBuilder:
                         "status",
                         self._tool_status(True, "ok"),
                     )
+                    emit_progress("tool.completed", tool=name, label=f"{name} 信息采集完成")
                 except Exception as exc:
-                    context["tool_snapshot"]["tool_status"][name] = self._tool_status(False, str(exc))
-                    print(f"[WARN] {name}工具快照获取失败: {exc}")
+                    context["tool_snapshot"]["tool_status"][name] = self._tool_status(False, type(exc).__name__)
+                    emit_progress("tool.failed", tool=name, error_type=type(exc).__name__, label=f"{name} 信息采集失败")
+                    logger.exception("tool.snapshot_failed", extra={"tool": name})
 
         # 当前主线不生成粗糙路线 hint：直接把酒店/景点/餐饮候选的
         # address、district 和 location 交给 Planner 判断动线。

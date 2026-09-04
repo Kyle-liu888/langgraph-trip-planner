@@ -13,21 +13,19 @@ from .nodes import (
 )
 from .runtime import PlannerRuntime
 from .state import PlannerInput, PlannerOutput, PlannerState
+from ..observability import instrument_node
 
 
-def build_planner_graph():
+def build_planner_graph(checkpointer=None):
     builder = StateGraph(
         PlannerState,
         input_schema=PlannerInput,
         output_schema=PlannerOutput,
         context_schema=PlannerRuntime,
     )
-    builder.add_node("collect_context", collect_context)
-    builder.add_node("build_prompt", build_prompt)
-    builder.add_node("generate_candidate", generate_candidate)
-    builder.add_node("validate_candidate", validate_candidate)
-    builder.add_node("select_best_candidate", select_best_candidate)
-    builder.add_node("create_fallback", create_fallback)
+    for node in (collect_context, build_prompt, generate_candidate, validate_candidate,
+                 select_best_candidate, create_fallback):
+        builder.add_node(node.__name__, instrument_node(node))
 
     builder.add_edge(START, "collect_context")
     builder.add_edge("collect_context", "build_prompt")
@@ -44,4 +42,4 @@ def build_planner_graph():
     )
     builder.add_edge("select_best_candidate", END)
     builder.add_edge("create_fallback", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer)

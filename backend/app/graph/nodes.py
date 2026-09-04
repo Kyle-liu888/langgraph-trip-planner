@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
 
 from ..llm.structured import ainvoke_structured
-from ..models.schemas import TripPlan
+from ..models.schemas import TripPlan, TripRequest
 from ..planner.output import (
     create_fallback_plan,
     enrich_trip_plan_poi_details,
@@ -21,13 +21,14 @@ from .runtime import PlannerRuntime
 from .query import build_planner_query, planner_max_output_tokens
 from .prompts import PLANNER_AGENT_PROMPT
 from .state import PlannerState
+from ..observability import emit_progress, redact
 
 
 async def collect_context(
     state: PlannerState,
     runtime: Runtime[PlannerRuntime],
 ) -> dict[str, Any]:
-    context = await asyncio.to_thread(runtime.context.context_builder.collect, state["request"])
+    context = await asyncio.to_thread(runtime.context.context_builder.collect, TripRequest.model_validate(state["request"]))
     return {
         "planner_context": context,
         "attempt": 0,
@@ -48,7 +49,7 @@ def build_prompt(
 ) -> dict[str, Any]:
     query = build_planner_query(
         runtime.context.context_builder,
-        state["request"],
+        TripRequest.model_validate(state["request"]),
         state["planner_context"],
     )
     return {
@@ -81,7 +82,7 @@ async def generate_candidate(
     ]
 
     invocation_kwargs: dict[str, Any] = {
-        "max_tokens": planner_max_output_tokens(state["request"]),
+        "max_tokens": planner_max_output_tokens(TripRequest.model_validate(state["request"])),
         "temperature": temperature,
     }
     if (
@@ -103,7 +104,7 @@ async def generate_candidate(
         return {
             "attempt": attempt,
             "candidate": None,
-            "last_error": f"模型调用或解析失败: {exc}",
+            "last_error": redact(f"模型调用或解析失败: {exc}"),
             "generation_status": "generation_failed",
             "generation_message": f"第 {attempt} 次模型生成失败",
         }
@@ -114,12 +115,11 @@ async def generate_candidate(
             "structured_strategy": result.strategy,
             "attempts": attempt,
             "usage": getattr(result.raw_message, "usage_metadata", None) or {},
-            "response_metadata": getattr(result.raw_message, "response_metadata", None) or {},
         }
     )
     return {
         "attempt": attempt,
-        "candidate": result.parsed,
+        "candidate": result.parsed.model_dump(mode="json"),
         "structured_strategy": result.strategy,
         "model_metadata": metadata,
         "last_error": "",
@@ -133,17 +133,19 @@ def validate_candidate(state: PlannerState) -> dict[str, Any]:
     if candidate is None:
         return {}
     try:
+        candidate = TripPlan.model_validate(candidate)
         enrich_trip_plan_poi_details(candidate, state["planner_context"])
-        validate_trip_plan_shape(candidate, state["request"], state["planner_context"])
+        validate_trip_plan_shape(candidate, TripRequest.model_validate(state["request"]), state["planner_context"])
     except Exception as exc:
+        emit_progress("validation.failed", error_type=type(exc).__name__, attempt=state["attempt"])
         return {
             "candidate": None,
-            "last_error": str(exc),
+            "last_error": redact(str(exc)),
             "generation_status": "validation_failed",
             "generation_message": f"第 {state['attempt']} 个候选未通过校验",
         }
 
-    candidates = [*state.get("candidates", []), (state["attempt"], candidate)]
+    candidates = [*state.get("candidates", []), {"attempt": state["attempt"], "plan": candidate.model_dump(mode="json")}]
     return {
         "candidate": None,
         "candidates": candidates,
@@ -165,13 +167,15 @@ def route_after_validation(
         return "select"
     if state.get("attempt", 0) >= settings.planner_max_attempts:
         return "select" if state.get("candidates") else "fallback"
+    emit_progress("retry.scheduled", attempt=state.get("attempt", 0) + 1,
+                  max_attempts=settings.planner_max_attempts)
     return "retry"
 
 
 def select_best_candidate(state: PlannerState) -> dict[str, Any]:
     ranked = rerank_trip_plan_candidates(
-        state["candidates"],
-        state["request"],
+        [(item["attempt"], TripPlan.model_validate(item["plan"])) for item in state["candidates"]],
+        TripRequest.model_validate(state["request"]),
         state["planner_context"],
     )
     best = ranked[0]
@@ -180,7 +184,7 @@ def select_best_candidate(state: PlannerState) -> dict[str, Any]:
     metadata["candidate_count"] = len(ranked)
     metadata["rerank_score"] = best.score
     return {
-        "trip_plan": best.trip_plan,
+        "trip_plan": best.trip_plan.model_dump(mode="json"),
         "model_metadata": metadata,
         "generation_status": "llm_success",
         "generation_message": (
@@ -192,7 +196,7 @@ def select_best_candidate(state: PlannerState) -> dict[str, Any]:
 
 def create_fallback(state: PlannerState) -> dict[str, Any]:
     return {
-        "trip_plan": create_fallback_plan(state["request"]),
+        "trip_plan": create_fallback_plan(TripRequest.model_validate(state["request"])).model_dump(mode="json"),
         "generation_status": "fallback_success",
-        "generation_message": f"模型生成失败，已返回确定性兜底计划：{state.get('last_error', '')}",
+        "generation_message": "模型生成未通过校验，已返回确定性兜底计划；这不是模型生成的完整结果。",
     }

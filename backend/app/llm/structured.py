@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
+import time
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 from .capabilities import infer_capabilities
 from .config import ModelConfig
+from ..observability import emit_progress
 
 
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
@@ -72,9 +74,15 @@ async def ainvoke_structured(
     kwargs = invocation_kwargs or {}
 
     for method in infer_capabilities(model_config).structured_output_methods:
+        started = time.perf_counter()
+        fields = {"provider": model_config.provider, "model": model_config.model, "strategy": method}
+        emit_progress("model.started", **fields)
         try:
             if method == "prompt":
                 raw = await model.ainvoke(messages, **kwargs)
+                emit_progress("model.completed", **fields,
+                              elapsed_ms=round((time.perf_counter() - started) * 1000),
+                              usage=getattr(raw, "usage_metadata", None))
                 parsed = schema.model_validate(text_parser(message_text(raw)))
                 return StructuredResult(parsed, method, raw, errors)
 
@@ -84,6 +92,9 @@ async def ainvoke_structured(
                 include_raw=True,
             )
             result = await runnable.ainvoke(messages, **kwargs)
+            emit_progress("model.completed", **fields,
+                          elapsed_ms=round((time.perf_counter() - started) * 1000),
+                          usage=getattr(result.get("raw"), "usage_metadata", None))
             parsing_error = result.get("parsing_error")
             if parsing_error:
                 raise StructuredOutputError(str(parsing_error))
@@ -99,8 +110,10 @@ async def ainvoke_structured(
                 strategy_errors=errors,
             )
         except StructuredOutputError as exc:
+            emit_progress("model.failed", **fields, error_type=type(exc).__name__)
             errors.append(f"{method}: {exc}")
         except Exception as exc:
+            emit_progress("model.failed", **fields, error_type=type(exc).__name__)
             if not _is_capability_error(exc):
                 raise
             errors.append(f"{method}: {exc}")

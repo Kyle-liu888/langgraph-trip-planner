@@ -57,6 +57,16 @@ class Settings(BaseSettings):
     planner_rerank_candidate_count: int = Field(default=3, ge=1, le=10)
     planner_rerank_temperature_step: float = Field(default=0.08, ge=0, le=1)
     log_level: str = "INFO"
+    log_format: str = "console"
+    log_file_enabled: bool = True
+    log_dir: Path = BACKEND_DIR / "logs"
+    database_url: SecretStr | None = None
+    supabase_url: str = ""
+    supabase_jwt_audience: str = "authenticated"
+    daily_trip_limit: int = Field(default=3, ge=1)
+    max_concurrent_runs: int = Field(default=2, ge=1, le=8)
+    max_resume_attempts: int = Field(default=3, ge=0, le=10)
+    sse_heartbeat_seconds: float = Field(default=15, ge=1, le=60)
 
     def get_cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

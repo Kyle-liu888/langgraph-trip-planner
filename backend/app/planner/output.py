@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..models.schemas import TripRequest, TripPlan, DayPlan, Attraction, Meal, WeatherInfo, Location
 from .dates import trip_date_strings, unknown_weather_row
+from ..observability import logger
 
 
 POI_NAME_SUFFIXES = [
@@ -331,11 +332,9 @@ def warn_plan_grounding(trip_plan: TripPlan, planner_context: Dict[str, Any]) ->
             ungrounded_hotels.append(day.hotel.name)
 
     if ungrounded_attractions:
-        preview = ", ".join(ungrounded_attractions[:5])
-        print(f"[WARN] Planner输出中有未命中工具候选的景点: {preview}")
+        logger.warning("validation.ungrounded_attractions", extra={"count": len(ungrounded_attractions)})
     if ungrounded_hotels:
-        preview = ", ".join(ungrounded_hotels[:3])
-        print(f"[WARN] Planner输出中有未命中工具候选的酒店: {preview}")
+        logger.warning("validation.ungrounded_hotels", extra={"count": len(ungrounded_hotels)})
 
     ungrounded_meals = []
     for day in trip_plan.days:
@@ -346,8 +345,7 @@ def warn_plan_grounding(trip_plan: TripPlan, planner_context: Dict[str, Any]) ->
                 ungrounded_meals.append(meal.name)
 
     if ungrounded_meals:
-        preview = ", ".join(ungrounded_meals[:5])
-        print(f"[WARN] Planner输出中有未命中餐饮候选的餐饮: {preview}")
+        logger.warning("validation.ungrounded_meals", extra={"count": len(ungrounded_meals)})
 
 
 def enrich_trip_plan_poi_details(trip_plan: TripPlan, planner_context: Dict[str, Any]) -> None:
@@ -384,10 +382,7 @@ def enrich_trip_plan_poi_details(trip_plan: TripPlan, planner_context: Dict[str,
                     filled_meal_locations += 1
 
     if filled_meal_locations or filled_meal_addresses:
-        print(
-            "[INFO] 已回填餐饮POI信息: "
-            f"坐标={filled_meal_locations}, 地址={filled_meal_addresses}"
-        )
+        logger.info("plan.meals_enriched", extra={"locations": filled_meal_locations, "addresses": filled_meal_addresses})
 
 
 def find_candidate_by_name(name: str, candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

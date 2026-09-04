@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from ...config import get_settings
+from ...observability import logger
 from ...planner.amap import AmapPlannerClient
 from ...services.amap_service import get_amap_service
 from ...services.unsplash_service import get_unsplash_service
@@ -25,7 +26,7 @@ class POIDetailResponse(BaseModel):
     summary="获取POI详情",
     description="根据POI ID获取详细信息,包括图片"
 )
-async def get_poi_detail(poi_id: str):
+def get_poi_detail(poi_id: str):
     """
     获取POI详情
 
@@ -48,10 +49,10 @@ async def get_poi_detail(poi_id: str):
         )
 
     except Exception as e:
-        print(f"[ERROR] 获取POI详情失败: {str(e)}")
+        logger.exception("poi.detail_failed")
         raise HTTPException(
             status_code=500,
-            detail=f"获取POI详情失败: {str(e)}"
+            detail={"code": "POI_FAILED", "message": "获取地点详情失败，请稍后重试"}
         )
 
 
@@ -60,7 +61,7 @@ async def get_poi_detail(poi_id: str):
     summary="搜索POI",
     description="根据关键词搜索POI"
 )
-async def search_poi(
+def search_poi(
     keywords: str,
     city: str = "北京",
     source_role: str = Query(default="food", description="POI类型: food/scenic/hotel")
@@ -99,10 +100,10 @@ async def search_poi(
         }
 
     except Exception as e:
-        print(f"[ERROR] 搜索POI失败: {str(e)}")
+        logger.exception("poi.search_failed")
         raise HTTPException(
             status_code=500,
-            detail=f"搜索POI失败: {str(e)}"
+            detail={"code": "POI_FAILED", "message": "地点搜索失败，请稍后重试"}
         )
 
 
@@ -111,7 +112,7 @@ async def search_poi(
     summary="获取景点图片",
     description="根据景点名称从Unsplash获取图片"
 )
-async def get_attraction_photo(name: str):
+def get_attraction_photo(name: str):
     """
     获取景点图片
 
@@ -141,8 +142,8 @@ async def get_attraction_photo(name: str):
         }
 
     except Exception as e:
-        print(f"[ERROR] 获取景点图片失败: {str(e)}")
+        logger.exception("poi.photo_failed")
         raise HTTPException(
             status_code=500,
-            detail=f"获取景点图片失败: {str(e)}"
+            detail={"code": "PHOTO_FAILED", "message": "获取图片失败，请稍后重试"}
         )

@@ -5,15 +5,14 @@ from __future__ import annotations
 from typing import Any
 from typing_extensions import NotRequired, TypedDict
 
-from ..models.schemas import TripPlan, TripRequest
 
 
 class PlannerInput(TypedDict):
-    request: TripRequest
+    request: dict[str, Any]
 
 
 class PlannerOutput(TypedDict):
-    trip_plan: TripPlan
+    trip_plan: dict[str, Any]
     generation_status: str
     generation_message: str
     model_metadata: dict[str, Any]
@@ -23,11 +22,11 @@ class PlannerState(PlannerInput, total=False):
     planner_context: dict[str, Any]
     planner_query: str
     attempt: int
-    candidate: NotRequired[TripPlan | None]
-    candidates: list[tuple[int, TripPlan]]
+    candidate: NotRequired[dict[str, Any] | None]
+    candidates: list[dict[str, Any]]
     last_error: str
     structured_strategy: str
     model_metadata: dict[str, Any]
-    trip_plan: TripPlan
+    trip_plan: dict[str, Any]
     generation_status: str
     generation_message: str

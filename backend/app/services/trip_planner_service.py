@@ -13,14 +13,14 @@ from ..planner.context import PlannerContextBuilder
 
 
 class TripPlannerService:
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, checkpointer=None) -> None:
         self.settings = settings or get_settings()
         self.model_config = ModelConfig.from_settings(self.settings)
         self.model = create_chat_model(self.model_config)
         self.context_builder = PlannerContextBuilder(
             self.settings.secret_value("amap_api_key")
         )
-        self.graph = build_planner_graph()
+        self.graph = build_planner_graph(checkpointer)
         self.runtime = PlannerRuntime(
             model=self.model,
             model_config=self.model_config,
@@ -29,7 +29,7 @@ class TripPlannerService:
         )
 
     async def plan_trip(self, request: TripRequest) -> dict[str, Any]:
-        return await self.graph.ainvoke({"request": request}, context=self.runtime)
+        return await self.graph.ainvoke({"request": request.model_dump(mode="json")}, context=self.runtime)
 
     def describe(self) -> dict[str, Any]:
         return {

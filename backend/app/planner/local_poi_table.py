@@ -5,6 +5,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
+from ..observability import logger
 
 
 DEFAULT_HIGH_END_POI_TABLE_PATH = Path(__file__).with_name("high_end_poi_table.json")
@@ -71,7 +72,7 @@ def load_high_end_poi_table() -> Dict[str, Any]:
     except FileNotFoundError:
         return {}
     except json.JSONDecodeError as exc:
-        print(f"[WARN] 高端POI表解析失败: {path} ({exc})")
+        logger.warning("local_poi.read_failed", extra={"error_type": type(exc).__name__})
         return {}
     return data.get("cities") or {}
 

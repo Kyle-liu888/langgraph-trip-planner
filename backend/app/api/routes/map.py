@@ -8,6 +8,7 @@ from ...models.schemas import (
     WeatherResponse
 )
 from ...services.amap_service import get_amap_service
+from ...observability import logger
 
 router = APIRouter(prefix="/map", tags=["地图服务"])
 
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/map", tags=["地图服务"])
     summary="搜索POI",
     description="根据关键词搜索POI(兴趣点)"
 )
-async def search_poi(
+def search_poi(
     keywords: str = Query(..., description="搜索关键词", examples=["故宫"]),
     city: str = Query(..., description="城市", examples=["北京"]),
     citylimit: bool = Query(True, description="是否限制在城市范围内")
@@ -48,10 +49,10 @@ async def search_poi(
         )
 
     except Exception as e:
-        print(f"[ERROR] POI搜索失败: {str(e)}")
+        logger.exception("map.poi_failed")
         raise HTTPException(
             status_code=500,
-            detail=f"POI搜索失败: {str(e)}"
+            detail={"code": "MAP_FAILED", "message": "地点搜索失败，请稍后重试"}
         )
 
 
@@ -61,7 +62,7 @@ async def search_poi(
     summary="查询天气",
     description="查询指定城市的天气信息"
 )
-async def get_weather(
+def get_weather(
     city: str = Query(..., description="城市名称", examples=["北京"])
 ):
     """
@@ -87,10 +88,10 @@ async def get_weather(
         )
 
     except Exception as e:
-        print(f"[ERROR] 天气查询失败: {str(e)}")
+        logger.exception("map.weather_failed")
         raise HTTPException(
             status_code=500,
-            detail=f"天气查询失败: {str(e)}"
+            detail={"code": "MAP_FAILED", "message": "天气查询失败，请稍后重试"}
         )
 
 
@@ -100,7 +101,7 @@ async def get_weather(
     summary="规划路线",
     description="规划两点之间的路线"
 )
-async def plan_route(request: RouteRequest):
+def plan_route(request: RouteRequest):
     """
     规划路线
 
@@ -130,10 +131,10 @@ async def plan_route(request: RouteRequest):
         )
 
     except Exception as e:
-        print(f"[ERROR] 路线规划失败: {str(e)}")
+        logger.exception("map.route_failed")
         raise HTTPException(
             status_code=500,
-            detail=f"路线规划失败: {str(e)}"
+            detail={"code": "MAP_FAILED", "message": "路线查询失败，请稍后重试"}
         )
 
 
@@ -142,7 +143,7 @@ async def plan_route(request: RouteRequest):
     summary="健康检查",
     description="检查地图服务是否正常"
 )
-async def health_check():
+def health_check():
     """健康检查"""
     try:
         get_amap_service()
@@ -150,5 +151,5 @@ async def health_check():
     except Exception as e:
         raise HTTPException(
             status_code=503,
-            detail=f"服务不可用: {str(e)}"
+            detail={"code": "MAP_UNAVAILABLE", "message": "地图服务未就绪"}
         )

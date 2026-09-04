@@ -111,7 +111,7 @@ def test_graph_retries_invalid_json_then_returns_valid_plan() -> None:
     result = asyncio.run(graph.ainvoke({"request": make_request()}, context=runtime))
 
     assert result["generation_status"] == "llm_success"
-    assert result["trip_plan"].city == "北京"
+    assert result["trip_plan"]["city"] == "北京"
     assert result["model_metadata"]["attempts"] == 2
     assert result["model_metadata"]["structured_strategy"] == "prompt"
 
@@ -123,5 +123,5 @@ def test_graph_returns_deterministic_fallback_after_attempt_limit() -> None:
     result = asyncio.run(graph.ainvoke({"request": make_request()}, context=runtime))
 
     assert result["generation_status"] == "fallback_success"
-    assert result["trip_plan"].city == "北京"
-    assert len(result["trip_plan"].days) == 1
+    assert result["trip_plan"]["city"] == "北京"
+    assert len(result["trip_plan"]["days"]) == 1

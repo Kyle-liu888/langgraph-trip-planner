@@ -3,6 +3,7 @@
 import requests
 from typing import List, Optional
 from ..config import get_settings
+from ..observability import logger
 
 class UnsplashService:
     """Unsplash图片服务类"""
@@ -52,7 +53,7 @@ class UnsplashService:
             return photos
 
         except Exception as e:
-            print(f"[ERROR] Unsplash搜索失败: {str(e)}")
+            logger.warning("unsplash.search_failed", extra={"error_type": type(e).__name__})
             return []
 
     def get_photo_url(self, query: str) -> Optional[str]:

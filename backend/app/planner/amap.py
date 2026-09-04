@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+from ..observability import logger
 
 from .pois import dedupe_pois, filter_pois, normalize_pois, rank_pois
 
@@ -70,7 +71,7 @@ class AmapPlannerClient:
         )
         if cached is not None:
             if PLANNER_CONTEXT_CACHE_VERBOSE:
-                print(f"  - amap缓存命中: {path} {self._cache_label(query_params)}")
+                logger.debug("amap.cache_hit", extra={"endpoint": path})
             return cached
 
         request_params = {**query_params, "key": self.api_key}
@@ -93,6 +94,7 @@ class AmapPlannerClient:
                 return data
             except Exception as exc:
                 last_exc = exc
+                logger.warning("amap.retry", extra={"endpoint": path, "attempt": attempt + 1, "error_type": type(exc).__name__})
                 time.sleep(0.5 + attempt)
         raise RuntimeError(f"高德API请求失败: {last_exc}") from last_exc
 
@@ -249,4 +251,4 @@ class AmapPlannerClient:
             tmp_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             tmp_path.replace(path)
         except Exception as exc:
-            print(f"[WARN] {label}缓存写入失败: {exc}")
+            logger.warning("cache.write_failed", extra={"cache": label, "error_type": type(exc).__name__})

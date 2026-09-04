@@ -12,6 +12,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..models.schemas import TripRequest
+from ..observability import logger
 from .output import normalize_poi_name as normalize_planner_poi_name
 
 
@@ -390,7 +391,7 @@ def load_attraction_price_table() -> List[Dict[str, Any]]:
     except FileNotFoundError:
         return []
     except Exception as exc:
-        print(f"[WARN] 景点票价表读取失败: {path} | {exc}")
+        logger.warning("pricing.read_failed", extra={"error_type": type(exc).__name__})
         return []
     return list(data.get("items") or [])
 
