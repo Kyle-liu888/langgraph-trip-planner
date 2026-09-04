@@ -12,7 +12,6 @@
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",
     "@microsoft/fetch-event-source": "^2.0.1",
-    "@supabase/supabase-js": "^2.115.0",
     "ant-design-vue": "^4.2.6",
     "axios": "^1.20.0",
     "html2canvas": "^1.4.1",

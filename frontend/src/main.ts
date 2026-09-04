@@ -20,7 +20,6 @@ const router = createRouter({
     },
     { path: '/trips/:id', component: () => import('./views/TripDetail.vue') },
     { path: '/login', component: () => import('./views/Login.vue') },
-    { path: '/auth/callback', component: () => import('./views/Login.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/trips/new' }
   ]
 })

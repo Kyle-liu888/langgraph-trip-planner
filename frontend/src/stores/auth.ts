@@ -1,26 +1,31 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from '@/services/supabase'
+import { authRequest, clearSession, localSession, refreshSession, replaceSession } from '@/services/auth'
 
 export const useAuth = defineStore('auth', () => {
-  const session = ref<Session | null>(null)
+  const session = localSession
   const user = computed(() => session.value?.user ?? null)
-  const configured = Boolean(supabase)
+  const error = ref('')
   let initialization: Promise<void> | undefined
-  function init() {
-    return initialization ??= (async () => {
-      if (!supabase) return
-      supabase.auth.onAuthStateChange((_event, value) => { session.value = value })
-      const { data, error } = await supabase.auth.getSession()
-      if (error) throw new Error('无法读取登录状态，请刷新重试')
-      session.value = data.session
-    })().catch(error => { initialization = undefined; throw error })
+  const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('trip-auth') : null
+  function expire() { clearSession(); initialization = undefined }
+  async function refresh() {
+    try { await refreshSession(); error.value = '' }
+    catch (e) { expire(); error.value = (e as Error).message }
+  }
+  if (channel) channel.onmessage = () => { expire(); void refresh() }
+  if (typeof window !== 'undefined') window.addEventListener('focus', () => { void refresh() })
+  function init() { return initialization ??= refresh() }
+  async function authenticate(credentials: { email: string; password: string }, register: boolean) {
+    await refreshSession()
+    replaceSession(await authRequest(register ? 'register' : 'login', credentials))
+    error.value = ''
+    channel?.postMessage('changed') // Never broadcast tokens or user records.
   }
   async function signOut() {
-    const { error } = await supabase!.auth.signOut({ scope: 'local' })
-    if (error) throw error
-    session.value = null
+    await authRequest('logout', {})
+    expire()
+    channel?.postMessage('changed')
   }
-  return { session, user, configured, init, signOut }
+  return { session, user, error, init, signOut, authenticate, expire }
 })

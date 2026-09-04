@@ -5,7 +5,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source'
 
 vi.mock('@microsoft/fetch-event-source', () => ({ fetchEventSource: vi.fn() }))
 vi.mock('./api', () => ({ API_BASE_URL: '' }))
-vi.mock('./supabase', () => ({ accessToken: vi.fn(async () => 'test-token'), supabase: { auth: { refreshSession: vi.fn() } } }))
+vi.mock('./auth', () => ({ clearSession: vi.fn() }))
 
 const event = (sequence: number): ProgressEvent => ({ sequence, type: 'node.started', timestamp: '2026-09-04T00:00:00Z', run_id: 'run' })
 
@@ -19,9 +19,10 @@ describe('durable progress subscription', () => {
     expect(result).toHaveLength(200)
     expect(result[0].sequence).toBe(2)
   })
-  it('uses bearer auth and finishes only on stream.closed', async () => {
+  it('uses session cookies and finishes only on stream.closed', async () => {
     vi.mocked(fetchEventSource).mockImplementation(async (_url, options) => {
-      expect(options!.headers).toMatchObject({ Authorization: 'Bearer test-token', 'Last-Event-ID': '0' })
+      expect(options!.headers).toEqual({ 'Last-Event-ID': '0' })
+      expect(options!.credentials).toBe('include')
       await options!.onopen!(new Response('', { headers: { 'content-type': 'text/event-stream' } }))
       options!.onmessage!({ id: '1', event: 'node.started', data: JSON.stringify(event(1)) })
       options!.onmessage!({ id: '1', event: 'node.started', data: JSON.stringify(event(1)) })

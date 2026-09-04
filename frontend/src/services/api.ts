@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { accessToken } from './supabase'
 import { useAuth } from '@/stores/auth'
 
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim()
@@ -11,6 +10,7 @@ export const API_BASE_URL = configuredApiBaseUrl
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -21,7 +21,8 @@ const requestOwners = new WeakMap<object, string | undefined>()
 apiClient.interceptors.request.use(
   async (config) => {
     const owner = useAuth().user?.id
-    if (config.url?.startsWith('/api/')) config.headers.Authorization = `Bearer ${await accessToken()}`
+    if (config.url?.startsWith('/api/') && !['get', 'head', 'options'].includes(config.method || 'get'))
+      config.headers['X-CSRF-Token'] = useAuth().session?.csrf_token || ''
     if (owner !== useAuth().user?.id) throw new Error('账号已切换，请重新操作')
     requestOwners.set(config, owner)
     return config
@@ -39,11 +40,13 @@ apiClient.interceptors.response.use(
     return response
   },
   (error) => {
+    if (error.response?.status === 401 && requestOwners.get(error.config) === useAuth().user?.id)
+      useAuth().expire()
     const detail = error.response?.data?.detail
     const requestId = error.response?.data?.request_id || error.response?.headers?.['x-request-id']
     const text = (typeof detail === 'object' ? detail.message : detail) ||
       (error.response?.status === 401 ? '登录已失效，请重新登录' : error.message) || '请求失败'
-    // Never expose Axios config: it contains the Authorization header.
+    // Never expose Axios config: it contains CSRF credentials.
     return Promise.reject(new Error(`${text}${requestId ? `（请求编号 ${requestId}）` : ''}`))
   }
 )
