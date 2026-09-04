@@ -15,7 +15,17 @@
 - VS Code 官方 Dev Containers 扩展已安装。原 Windows 项目和 main 保持原样。
 - 此前提交已经成功推送到 `codex/local-dev-environment`，之前的 GitHub 连接错误已解除。
 
-**剩余验收：用户当次确认后，退出 Docker、关闭全部 WSL（含 Ollama），验证端口关闭，再重启并核对数据。此项尚未执行。** 没有自动提交真实模型/地图请求。
+**最终关闭与重启验收已通过（2026-09-04，用户当次明确授权）。**
+
+- 先确认全部活跃规划为 0，记录四个本地数据库的表内容摘要；完成关闭前、正常停服后的数据库及配置备份。
+- 后端/Vite 正常退出，容器全部停止，再退出 Docker Desktop、执行 wsl --shutdown。Ubuntu 与 docker-desktop 均为 Stopped；5173、8000、15432 的 TCP 连接均失败，符合预期。
+- 使用 Docker Desktop 官方 CLI 重启，再恢复共享 PostgreSQL、项目容器、前端和后端。
+- 四个数据库共 36 张业务/账号/会话/检查点及迁移表的记录数和内容摘要，与关机前完全一致（第二项目空库为 0 张）。
+- Windows 访问前端与登录代理均 HTTP 200；后端 health=healthy，storage_ready/auth_configured=true，数据库端口重新可达。
+- Ollama 的自启动按用户后续要求已禁用；此次 Ubuntu 重启后验证为 disabled / inactive，没有随环境启动。
+- 全程未删除数据卷，未调用真实模型或地图 API；项目现处于运行状态。
+
+Windows 的未签名 UNC PowerShell 快捷脚本被当前执行策略拦截，因此本次通过已验证的 Linux 管理入口及 Docker/WSL 命令分步完成，没有更改执行策略。日常手册已补充相同的分步操作方式。真实模型生成一条行程仍由用户主动验收。
 
 ## 以下为首次实施时的历史记录
 

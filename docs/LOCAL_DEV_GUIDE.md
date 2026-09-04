@@ -61,6 +61,30 @@ Windows PowerShell 可调用 Linux 工作区的 `scripts/windows-dev.ps1`：
 
 关闭 VS Code/浏览器不会自动停止规划或整套环境。所有关闭操作均不删除数据卷，不执行 prune。不要自行运行 `docker compose down -v`。
 
+### Windows 快捷脚本被签名策略拦截时
+
+这台电脑实测会拒绝直接运行 WSL UNC 路径下未签名的 PowerShell 脚本。无需降低执行策略；使用以下分步方式即可。
+
+开始：打开 Docker Desktop；在 Ubuntu 中运行本页的 `python3 scripts/dev.py start`，再通过 VS Code 分别启动前后端任务。
+
+结束：先在 Ubuntu 中运行下面的命令，查看所有容器/任务并输入 `STOP ALL` 确认。命令必须成功完成，备份失败时不要继续：
+
+```bash
+cd ~/dev/projects/langgraph-trip-planner
+python3 scripts/dev.py stop-containers
+```
+
+确认已显示容器停止、数据卷保留之后，在 Windows PowerShell 执行：
+
+```powershell
+docker desktop stop
+if ($LASTEXITCODE -ne 0) { throw 'Docker 未正常退出，暂停 WSL 关闭。' }
+wsl --shutdown
+wsl --list --verbose
+```
+
+这组步骤已在本机完成关闭/重启验收。最后应看到 Ubuntu 与 docker-desktop 都是 Stopped。下次打开 Docker 并启动项目后，数据仍会保留。
+
 ## 日志、进度与本地账号
 
 - 控制台输出真实节点、模型调用开始/结束、耗时及错误类型。
