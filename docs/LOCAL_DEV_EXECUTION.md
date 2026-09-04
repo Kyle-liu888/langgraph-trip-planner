@@ -33,3 +33,13 @@
 Docker Desktop 启动操作被当前工具策略拒绝；原生窗口控制入口不可用。需要用户打开 Docker Desktop，通过官方界面完成 D 盘迁移。Docker Hub 直连超时，待引擎正常联网后再执行 pin-images。
 
 尚未创建/迁移真实本地数据库，尚未执行容器重建、备份恢复演练、全部关闭重启。Ubuntu 因工作区操作处于运行状态；Ollama 未被卸载或强行停止。
+
+## Git 保存状态
+
+代码已按后端账号、前端会话、开发环境、文档拆分提交到本地分支 `codex/local-dev-environment`，提交前通过本地凭据对照扫描。原 Windows 工作区和 main 均未改动。
+
+GitHub push 两次均返回 Connection was reset；GitHub 连接器也未能访问该仓库。因此远程推送尚未成功，不能在 GitHub 上查看本轮改动。网络恢复后推送同一分支，不强推、不覆盖 main：
+
+```bash
+git push -u origin codex/local-dev-environment
+```
