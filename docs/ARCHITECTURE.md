@@ -76,7 +76,9 @@ API响应的`metadata`可包含：
 
 ## 持久化、账号和进度
 
-- Supabase Auth 负责邮箱/GitHub 登录。前端用 publishable key；后端通过固定项目 JWKS 验证用户 JWT，绝不采信请求中的 user_id。
+- 本地 accounts 表保存邮箱标识与 Argon2id 密码哈希；login_sessions 只保存不透明会话令牌的 SHA256 和到期时间。前端使用 HttpOnly/SameSite Cookie，后端从会话查用户，绝不采信输入的 user_id。
+- GET /api/auth/session 提供 CSRF 信息；登录前用 HttpOnly Cookie 双重提交校验，登录后用会话派生 token 校验。所有修改请求必须通过严格 Origin 检查；auth_attempts 持久化限速。
+- 退出立即删除服务端会话，SSE 每批重新检查撤销/到期，并在退出时唤醒等待连接。会话过期只要求重新登录，不重新提交规划。
 - `trips` 保存请求、最终结果、状态、版本；`trip_runs` 保存每次执行；`trip_events` 保存可重放事件；`daily_usage` 保存每日额度。
 - 业务表启用 RLS 且没有面向浏览器的访问策略。FastAPI 使用可信数据库 owner 连接，所有资源查询同时过滤行程 ID 与已认证用户 ID。
 - `planner_internal` 私有 schema 存放 LangGraph PostgreSQL checkpointer。可序列化状态只含普通字典/列表；模型对象和凭据只存在 runtime 中。

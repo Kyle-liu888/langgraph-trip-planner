@@ -1,4 +1,8 @@
-# 本地功能版实施范围
+# 历史功能计划
+
+此处的 Supabase 选型已由 [完整本地开发计划](LOCAL_DEV_PLAN.md) 替代。当前执行进度见 [LOCAL_DEV_EXECUTION.md](LOCAL_DEV_EXECUTION.md)，操作见 [LOCAL_DEV_GUIDE.md](LOCAL_DEV_GUIDE.md)。
+
+## 原本地功能版实施范围
 
 本轮只实现日志、SSE 节点进度、账号与持久化历史/恢复，不涉及服务器采购、部署、域名、作品集首页或付费服务。
 

@@ -4,7 +4,7 @@
 
 本项目只有在线推理，不包含模型后训练、训练数据、LoRA 权重或本地训练服务。
 
-当前本地功能版已增加 Supabase 登录、持久化历史与检查点恢复、SSE 节点进度、轮转日志。**首次运行请先完成 [Supabase 本地配置指南](docs/SUPABASE_LOCAL_SETUP.md)**；未配置数据库时后端会显示 degraded。本轮不涉及网站部署或付费服务。
+本分支迁移到 **Ubuntu + 非 root 开发容器 + 共享本地 PostgreSQL**，使用本地账号，不再依赖 Supabase。保留历史、检查点恢复、SSE 节点进度和轮转日志。**首次运行请看 [本地隔离开发手册](docs/LOCAL_DEV_GUIDE.md)**，完成状态见 [执行记录](docs/LOCAL_DEV_EXECUTION.md)。本轮不涉及部署或付费服务；外部模型/地图 API 费用另计。
 
 ## 主要能力
 
@@ -14,9 +14,9 @@
 - LangGraph 显式管理失败重试、校验反馈、多候选 Rerank 和确定性 fallback。
 - 返回供应商、模型、结构化策略、尝试次数和 Token usage 等可观测元数据。
 - Vue 页面展示每日行程、地图、天气与预算，并支持导出。
-- 邮箱/GitHub 登录；账号侧边栏支持历史、新增、重命名、删除，编辑结果保存到数据库。
+- 本地邮箱标识＋密码登录；账号侧边栏支持历史、新增、重命名、删除，编辑结果保存到本地数据库。
 - SSE 展示真实 LangGraph 节点和模型调用状态；断线重放，刷新不重复发起规划。
-- Supabase PostgreSQL Checkpointer 支持中断后手动恢复，日志可按请求/行程/运行编号定位。
+- 本地 PostgreSQL Checkpointer 支持中断后手动恢复，日志可按请求/行程/运行编号定位。
 
 ## 原有表单与结果界面预览
 
@@ -30,7 +30,7 @@
 
 ```text
 Vue 3
-  → Supabase Auth 登录，携带 access token
+  → 本地账号登录，携带 HttpOnly Cookie（修改请求额外带 CSRF）
   → FastAPI POST /api/trips（立即返回行程 ID）
   → GET /api/trips/{id}/events（SSE 实时进度与重放）
   → 后台 RunManager + PostgreSQL 业务表
@@ -56,60 +56,26 @@ Vue 3
 - 前端：Vue 3、TypeScript、Vite、Ant Design Vue、高德地图 Web JS API
 - 测试：pytest、LangChain Fake Chat Model
 
-## Windows 快速开始
+## 本地隔离环境快速开始
 
-### 1. 后端
+先在 Docker Desktop 中开启 Ubuntu 集成，按手册备份并确认数据盘位置。在 Ubuntu 终端执行：
 
-```powershell
-cd backend
-Copy-Item .env.example .env
-uv sync
-uv run alembic upgrade head
-uv run python run.py
+```bash
+cd ~/dev/projects/langgraph-trip-planner
+python3 scripts/dev.py setup
+python3 scripts/dev.py pin-images  # 仅首次；固定明确版本及注册表摘要
+python3 scripts/dev.py start
 ```
 
-先编辑 `backend/.env` 再运行上述迁移和启动命令（已有 `.env` 时不要覆盖它）：
+密钥在 `~/dev/config/trip-backend.env`、`trip-frontend.env`；专用数据库密码自动生成，不提交 Git。
 
-```env
-LLM_PROVIDER=deepseek
-LLM_MODEL=deepseek-chat
-LLM_API_KEY=your-llm-api-key
-LLM_BASE_URL=https://api.deepseek.com
+VS Code 打开 Linux 项目后选择 **Reopen in Container**，分别运行“数据库迁移”“启动后端（含日志）”“启动前端”任务。Python 3.13、Node 24、uv 及依赖仅在项目容器中，不复制 Windows 的 .venv/node_modules。
 
-AMAP_API_KEY=your-amap-web-service-key
-HOST=0.0.0.0
-PORT=8000
-CORS_ORIGINS=http://localhost:5173
-SUPABASE_URL=https://PROJECT_REF.supabase.co
-DATABASE_URL=postgresql://postgres.PROJECT_REF:URL_ENCODED_PASSWORD@SESSION_POOLER_HOST:5432/postgres?sslmode=require
-```
-
-访问：
-
-- API 文档：`http://localhost:8000/docs`
+- 界面：`http://localhost:5173`
 - 健康检查：`http://localhost:8000/health`
-- 日志：`backend/logs/app.log` 和 `backend/logs/error.log`
-
-### 2. 前端
-
-```powershell
-cd frontend
-Copy-Item .env.example .env
-npm ci
-npm run dev
-```
-
-编辑 `frontend/.env`：
-
-```env
-VITE_API_BASE_URL=http://localhost:8000
-VITE_AMAP_WEB_KEY=your-amap-web-key
-VITE_AMAP_WEB_JS_KEY=your-amap-web-js-key
-VITE_SUPABASE_URL=https://PROJECT_REF.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
-```
-
-访问 `http://localhost:5173`。
+- API 文档：`http://localhost:8000/docs`
+- 日志：Linux 项目 `backend/logs/app.log` 和 `error.log`
+- 只关项目：`python3 scripts/dev.py stop-trip`；结束全部开发使用需确认的 Windows 脚本，详见手册。
 
 ## 切换模型
 
@@ -156,7 +122,7 @@ npm test
 npm run build
 ```
 
-当前测试不调用真实模型或高德 API，覆盖供应商映射、重试/兜底、持久化重开恢复、SSE 重放/重连、权限隔离、额度、编辑版本冲突和安全日志。真实 Supabase 联调仍需填写自己的配置。
+以上测试在开发容器内执行，不调用真实模型或高德 API。真实 PostgreSQL 验收另运行 `python3 scripts/dev.py verify-postgres`（Ubuntu 主机），不提供测试数据库时对应测试会明确跳过。已验证和待验证项目见执行记录。
 
 ## API
 
