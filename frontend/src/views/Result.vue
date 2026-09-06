@@ -100,7 +100,7 @@
             <a-card id="budget" v-if="tripPlan.budget" title="预算明细" :bordered="false" class="budget-card">
               <div class="budget-grid">
                 <div class="budget-item">
-                  <div class="budget-label">景点门票</div>
+                  <div class="budget-label">景点门票（估算）</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_attractions }}</div>
                 </div>
                 <div class="budget-item">
@@ -208,7 +208,7 @@
               <a-divider orientation="left">景点安排</a-divider>
               <a-list
                 :data-source="day.attractions"
-                :grid="{ gutter: 16, column: 2 }"
+                :grid="{ gutter: 16, xs: 1, sm: 1, md: 1, lg: 1, xl: 1, xxl: 2 }"
               >
                 <template #renderItem="{ item, index }">
                   <a-list-item>
@@ -254,9 +254,6 @@
                         <div class="attraction-badge">
                           <span class="badge-number">{{ index + 1 }}</span>
                         </div>
-                        <div v-if="item.ticket_price" class="price-tag">
-                          ¥{{ item.ticket_price }}
-                        </div>
                       </div>
 
                       <!-- 编辑模式下可编辑的字段 -->
@@ -278,6 +275,11 @@
                         <p><strong>描述:</strong> {{ item.description }}</p>
                         <p v-if="item.rating"><strong>评分:</strong> {{ item.rating }}⭐</p>
                       </div>
+                      <AttractionVisitInfo
+                        :city="tripPlan.city" :name="item.name" :visit-date="day.date"
+                        :ticket-price="item.ticket_price" :editing="editMode"
+                        :info="visitInfos[visitKey(tripPlan.city, { place: item, visitDate: day.date })]"
+                      />
                     </a-card>
                   </a-list-item>
                 </template>
@@ -368,7 +370,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import AttractionVisitInfo from '@/components/AttractionVisitInfo.vue'
+import { loadVisitInfos, visitKey, type VisitInfo } from '@/services/visitInfo'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -411,6 +415,19 @@ const activeSection = ref('overview')
 const activeDays = ref<number[]>([0]) // 默认展开第一天
 let map: any = null
 let disposed = false
+const visitInfos = ref<Record<string, VisitInfo>>({})
+watch(() => JSON.stringify([
+  editMode.value, tripPlan.value?.city,
+  tripPlan.value?.days.flatMap(day => day.attractions.map(place => visitKey(tripPlan.value!.city, { place, visitDate: day.date }))),
+]), (_signature, _previous, onCleanup) => {
+  let stale = false
+  onCleanup(() => { stale = true })
+  if (!tripPlan.value || editMode.value) return
+  const city = tripPlan.value.city
+  const stops = tripPlan.value.days.flatMap(day => day.attractions.map(place => ({ place, visitDate: day.date })))
+  visitInfos.value = {}
+  void loadVisitInfos(city, stops, (key, info) => { visitInfos.value[key] = info }, () => stale || disposed)
+}, { immediate: true })
 let AMapApi: any = null
 const dailyMaps = new Map<number, any>()
 
