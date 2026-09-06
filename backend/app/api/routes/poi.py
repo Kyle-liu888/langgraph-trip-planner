@@ -7,7 +7,7 @@ from ...config import get_settings
 from ...observability import logger
 from ...planner.amap import AmapPlannerClient
 from ...services.amap_service import get_amap_service
-from ...services.unsplash_service import get_unsplash_service
+from ...services.poi_photo_service import get_poi_photo_service
 
 router = APIRouter(prefix="/poi", tags=["POI"])
 SEARCH_SOURCE_ROLES = {"food", "scenic", "hotel"}
@@ -110,40 +110,20 @@ def search_poi(
 @router.get(
     "/photo",
     summary="获取景点图片",
-    description="根据景点名称从Unsplash获取图片"
+    description="获取经城市、名称及坐标核对的高德地点照片；无可靠匹配时不配图"
 )
-def get_attraction_photo(name: str):
-    """
-    获取景点图片
-
-    Args:
-        name: 景点名称
-
-    Returns:
-        图片URL
-    """
+def get_attraction_photo(
+    name: str = Query(min_length=1, max_length=120),
+    city: str = Query(default="", max_length=80),
+    poi_id: str = Query(default="", max_length=40, pattern=r"^[A-Za-z0-9_-]*$"),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+):
     try:
-        unsplash_service = get_unsplash_service()
-
-        # 搜索景点图片
-        photo_url = unsplash_service.get_photo_url(f"{name} China landmark")
-
-        if not photo_url:
-            # 如果没找到,尝试只用景点名称搜索
-            photo_url = unsplash_service.get_photo_url(name)
-
-        return {
-            "success": True,
-            "message": "获取图片成功",
-            "data": {
-                "name": name,
-                "photo_url": photo_url
-            }
-        }
-
-    except Exception as e:
-        logger.exception("poi.photo_failed")
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "PHOTO_FAILED", "message": "获取图片失败，请稍后重试"}
-        )
+        data = get_poi_photo_service().resolve(name, city, poi_id, longitude, latitude)
+        logger.info("poi.photo_resolved", extra={"photo_status": data["status"]})
+        return {"success": True, "data": {"name": name, **data}}
+    except Exception as exc:
+        # Never log exception text: HTTP errors can contain the API key in the URL.
+        logger.warning("poi.photo_unavailable", extra={"error_type": type(exc).__name__})
+        return {"success": False, "data": {"name": name, "photo_url": None, "source": None, "status": "unavailable", "poi_id": None}}

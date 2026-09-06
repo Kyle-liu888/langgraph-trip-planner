@@ -243,11 +243,14 @@
                       <!-- 景点图片 -->
                       <div class="attraction-image-wrapper">
                         <img
-                          :src="getAttractionImage(item.name, index)"
+                          v-if="getPhoto(item)?.status === 'available'"
+                          :src="getPhoto(item)?.photo_url || undefined"
                           :alt="item.name"
                           class="attraction-image"
-                          @error="handleImageError"
+                          @error="handlePhotoError(item)"
                         />
+                        <div v-else class="attraction-photo-placeholder" role="status">{{ editMode && !getPhoto(item) ? '保存后加载景点图片' : photoLabel(getPhoto(item)) }}</div>
+                        <span v-if="getPhoto(item)?.status === 'available'" class="photo-source">图片来源：高德地图</span>
                         <div class="attraction-badge">
                           <span class="badge-number">{{ index + 1 }}</span>
                         </div>
@@ -385,7 +388,8 @@ import {
 import AMapLoader from '@amap/amap-jsapi-loader'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import type { TripPlan } from '@/types'
+import type { Attraction, TripPlan } from '@/types'
+import { loadPlacePhotos, photoKey, photoLabel, type PlacePhoto } from '@/services/photos'
 import api from '@/services/api'
 import { saveTripPlan, type TripRecord } from '@/services/trips'
 import { useTrips } from '@/stores/trips'
@@ -398,7 +402,11 @@ const router = useRouter()
 const tripPlan = ref<TripPlan | null>(null)
 const editMode = ref(false)
 const originalPlan = ref<TripPlan | null>(null)
-const attractionPhotos = ref<Record<string, string>>({})
+const attractionPhotos = ref<Record<string, PlacePhoto>>({})
+const getPhoto = (place: Attraction) => attractionPhotos.value[photoKey(tripPlan.value?.city || '', place)]
+const handlePhotoError = (place: Attraction) => {
+  attractionPhotos.value[photoKey(tripPlan.value?.city || '', place)] = { photo_url: null, source: null, status: 'unavailable' }
+}
 const activeSection = ref('overview')
 const activeDays = ref<number[]>([0]) // 默认展开第一天
 let map: any = null
@@ -429,7 +437,7 @@ onMounted(async () => {
   if (data) {
     tripPlan.value = JSON.parse(JSON.stringify(data))
     // 加载景点图片
-    await loadAttractionPhotos()
+    void loadAttractionPhotos()
     // 回填缺失的餐饮坐标,旧session里的结果也尽量能显示餐厅点位
     await loadMissingMealLocations()
     if (disposed) return
@@ -483,6 +491,7 @@ const saveChanges = async () => {
   } catch (e) { message.error((e as Error).message); return }
   editMode.value = false
   message.success('修改已保存')
+  void loadAttractionPhotos()
 
   // 重新初始化地图以反映更改
   destroyMaps()
@@ -574,27 +583,8 @@ const getWeatherCardClass = (dayWeather: unknown, nightWeather: unknown): string
 // 加载所有景点图片
 const loadAttractionPhotos = async () => {
   if (!tripPlan.value) return
-
-  const promises: Promise<void>[] = []
-
-  tripPlan.value.days.forEach(day => {
-    day.attractions.forEach(attraction => {
-      const promise = api.get(`/api/poi/photo?name=${encodeURIComponent(attraction.name)}`)
-        .then(res => res.data)
-        .then(data => {
-          if (data.success && data.data.photo_url) {
-            attractionPhotos.value[attraction.name] = data.data.photo_url
-          }
-        })
-        .catch(err => {
-          console.error(`获取${attraction.name}图片失败:`, err)
-        })
-
-      promises.push(promise)
-    })
-  })
-
-  await Promise.all(promises)
+  await loadPlacePhotos(tripPlan.value.city, tripPlan.value.days.flatMap(day => day.attractions),
+    (key, photo) => { attractionPhotos.value[key] = photo }, () => disposed)
 }
 
 const isLodgingBreakfastMeal = (type: string, name: string): boolean => {
@@ -645,46 +635,6 @@ const loadMissingMealLocations = async () => {
   if (updatedCount > 0 && tripPlan.value) {
     // Read-time map enrichment stays local; explicit Save persists edits with revision checking.
   }
-}
-
-// 获取景点图片
-const getAttractionImage = (name: string, index: number): string => {
-  // 如果已加载真实图片,返回真实图片
-  if (attractionPhotos.value[name]) {
-    return attractionPhotos.value[name]
-  }
-
-  // 返回一个纯色占位图(避免跨域问题)
-  const colors = [
-    { start: '#1677ff', end: '#69b1ff' },
-    { start: '#0f766e', end: '#5eead4' },
-    { start: '#475569', end: '#94a3b8' },
-    { start: '#2563eb', end: '#93c5fd' },
-    { start: '#334155', end: '#cbd5e1' }
-  ]
-  const colorIndex = index % colors.length
-  const { start, end } = colors[colorIndex]
-
-  // 使用base64编码避免中文问题
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
-    <defs>
-      <linearGradient id="grad${index}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style="stop-color:${start};stop-opacity:1" />
-        <stop offset="100%" style="stop-color:${end};stop-opacity:1" />
-      </linearGradient>
-    </defs>
-    <rect width="400" height="300" fill="url(#grad${index})"/>
-    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="bold" fill="white">${name}</text>
-  </svg>`
-
-  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
-}
-
-// 图片加载失败时的处理
-const handleImageError = (event: Event) => {
-  const img = event.target as HTMLImageElement
-  // 使用灰色占位图
-  img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect width="400" height="300" fill="%23f0f0f0"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="18" fill="%23999"%3E图片加载失败%3C/text%3E%3C/svg%3E'
 }
 
 const replaceMapSnapshots = (exportContainer: HTMLElement) => {
@@ -1412,6 +1362,27 @@ const destroyMaps = () => {
   margin-bottom: 12px;
   border-radius: 8px;
   overflow: hidden;
+}
+
+.attraction-photo-placeholder {
+  height: 100%;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: #64748b;
+  background: #f1f5f9;
+}
+
+.photo-source {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 2px 6px;
+  color: white;
+  background: #0009;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
 .attraction-image {

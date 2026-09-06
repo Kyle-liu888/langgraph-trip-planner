@@ -200,7 +200,8 @@ class AmapPlannerClient:
         safe = "".join(ch for ch in value if ch.isalnum() or ch in ("-", "_"))
         return safe or "query"
 
-    def _wait_for_amap_slot(self) -> None:
+    @staticmethod
+    def _wait_for_amap_slot() -> None:
         """进程内限速，避免并发cache miss时超过高德QPS限制。"""
         if AMAP_MIN_INTERVAL_SECONDS <= 0:
             return
