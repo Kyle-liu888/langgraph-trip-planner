@@ -1,0 +1,107 @@
+# 浏览器验收与复现
+
+## 本次范围（2026-09-06）
+
+按 `webapp-testing` 的“先观察页面、操作、检查截图与日志”流程执行。当前环境使用 Codex 提供的真实浏览器控制接口（Playwright 定位器），不是另装一套 Python Playwright 浏览器。本文记录实际操作；仓库没有因此新增完整的 Playwright E2E 回放套件。
+
+验收分两层：
+
+- **现有服务只读检查**：打开已有北京行程，检查地图、规划记录和官网链接。不注册、退出或编辑用户真实账号，不重新提交真实规划。
+- **独立测试服务写操作**：使用真实 Vue 构建、注册／登录／行程 API、RunManager 和 LangGraph；模型及地图返回模拟数据，数据库为临时 SQLite，检查点为 MemorySaver。测试账号和三日行程不进入正式 PostgreSQL。
+
+新增测试入口：`backend/tests/browser_fixture.py`；其安全边界与接口回归由 `backend/tests/test_browser_fixture.py` 验证。该入口不导入正式应用的启动流程，不读环境文件或环境中的凭据；配置仅来自代码。浏览器 Cookie 使用 `trip_browser_fixture_session`、`trip_browser_fixture_csrf`，防止同一主机不同端口的 Cookie 覆盖正式会话。
+
+## 已执行的真实浏览器操作
+
+| 场景 | 实际结果 |
+| --- | --- |
+| 空登录表单提交 | 显示邮箱、密码必填和总提示，不再是“无反应” |
+| 注册第一个一次性账号 | 成功进入新增行程，历史为空 |
+| 规划北京三日行程 | 模拟模型生成成功；页面收到 19 条执行记录，含采集、整理、生成、校验、选优与结束 |
+| 节点记录 | 展示模型等待耗时和程序节点，不把它们称为内部思考 |
+| 日期导航 | “第 2 天”展开对应天坛卡片；回顶可用 |
+| 复制攻略词 | 点击后显示“搜索词已复制”，组件测试另核对中文词内容 |
+| 大众点评链接 | 主入口为 `https://www.dianping.com/`，新标签页、安全属性；不再是百度站外搜索 |
+| 官网可达性 | 电脑官网本次出现空白页；移动官网 `https://m.dianping.com/dphome` 可见首页与搜索入口，已加备用链接。未绕过登录／验证，也没有提交平台搜索 |
+| 编辑保存 | 修改测试行程第 2 天描述，保存后从新增页重新打开历史，修改仍存在 |
+| 错误密码 | 显示统一提示“邮箱或密码不正确” |
+| 退出并正确登录 | 测试账号历史仍存在；退出不删除行程 |
+| 第二个账号 | 注册成功，历史为空，看不到第一个账号的测试行程 |
+| 手机布局（390×844） | 登录、结果、日期导航横向滚动和历史抽屉可操作；截图未见正文横向溢出 |
+| 桌面布局（1280×900） | 历史侧栏和行程内容正常排列 |
+| 手机退出抽屉 | **发现并修复**：退出后空白抽屉曾遮挡登录页；重建前端后浏览器复测，登录页正常、抽屉消失 |
+| 原服务地图 | 只读查看已有行程，全程地图和标记可见；原页面所采集的浏览器错误日志为 0 |
+
+截图在本次交互中实际采集并检查；未将包含个人账号和真实历史的截图提交到 Git。
+
+### 发现的缺陷与修复
+
+`App.vue` 的移动抽屉原先不依赖登录状态挂载。退出时，账号清空使内部侧栏先卸载，关闭抽屉的事件可能丢失，留下空白遮罩。
+
+现在未登录时不挂载抽屉；账号 ID 或路由变化会清空打开状态。新增 `App.test.ts` 四项回归覆盖退出、会话失效、抽屉外导航、同一路由切换账号。真实浏览器已复测手机端退出。
+
+### 错误和验证边界
+
+- 测试前端使用空地图 Key，并设置仅允许同源资源的 CSP；“地图加载失败：请填写key”是预期的测试限制。测试景点没有实景图，开放信息故意返回不可用，攻略仍展示。
+- 本次没有提交真实模型调用。现有行程的地图只读展示可能使用高德自己的正常额度；不能把“无模型费”写成“所有外部流量完全免费”。
+- 没有做第三方平台登录、评论抓取、真实票务、删除用户行程或公网部署测试。
+- SQLite／MemorySaver 的浏览器验收不能证明 PostgreSQL 跨进程恢复、容器重建持久性或灾难恢复。后者使用专用的 `verify-postgres` 和备份恢复流程另验。
+- 本次没有在浏览器中主动中断后台进程；检查点恢复边界见[架构设计](ARCHITECTURE.md)及专用测试。不能声称浏览器已验证所有失败分支。
+
+## 本次自动化结果
+
+在现有开发容器、锁定依赖下：
+
+- 后端：`uv run --locked pytest`，**73 通过、1 跳过**；跳过的是未显式配置真实测试 PostgreSQL 的验收。
+- 前端：`npm test`，**51 通过**，包括新增的 4 项抽屉回归。
+- 构建：`npm run build`，类型检查与 Vite 构建通过。仍有大于 500 kB 的 chunk 提示（最大约 1.59 MB，压缩后约 500 kB），本轮没有做打包拆分优化。
+
+这些是该日期的测试快照，后续以自己运行的结果为准。
+
+## 如何复现隔离服务
+
+以下方案供开发者复测，不是日常启动方式。日常仍看[本地开发手册](LOCAL_DEV_GUIDE.md)。
+
+前提：Docker Desktop 已运行；现有项目镜像 `trip-dev-workspace`、依赖卷 `trip-dev_python_deps` 和 `trip-dev_node_deps` 已通过正常环境初始化生成。若 Compose 项目名不同，先只读检查实际名称，不要盲目创建同名空卷。端口 18081 和容器名若被占用，请停止并检查归属，不杀其他服务。
+
+在 **Ubuntu 主机**的项目根目录执行：
+
+```bash
+docker run -d --name trip-ui-acceptance --init \
+  --user 1000:1000 --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true --cpus 2 --memory 2g \
+  --publish 127.0.0.1:18081:18081 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 \
+  --tmpfs /workspace/frontend/node_modules/.vite-temp:rw,nosuid,nodev,size=32m,uid=1000,gid=1000 \
+  --mount type=bind,source="$PWD",target=/workspace,readonly \
+  --mount type=volume,source=trip-dev_python_deps,target=/workspace/backend/.venv,readonly \
+  --mount type=volume,source=trip-dev_node_deps,target=/workspace/frontend/node_modules,readonly \
+  --env PYTHONDONTWRITEBYTECODE=1 \
+  --env VITE_API_BASE_URL= --env VITE_AMAP_WEB_JS_KEY= --env VITE_AMAP_WEB_KEY= \
+  trip-dev-workspace sleep infinity
+
+docker exec -w /workspace/frontend trip-ui-acceptance \
+  npm run build -- --outDir /tmp/trip-browser-dist
+
+docker exec -w /workspace/backend trip-ui-acceptance \
+  /workspace/backend/.venv/bin/python tests/browser_fixture.py \
+  --host 0.0.0.0 --port 18081 --dist /tmp/trip-browser-dist
+```
+
+最后一个命令保持运行。在浏览器打开 `http://127.0.0.1:18081/login`，必须能看到黄色“隔离浏览器验收”提示，再创建一次性 `example.test` 账号。可从三天、一个城市开始；所有测试景点和天气仅用于界面验收，不代表真实推荐。不要填真实模型 Key。
+
+`/health` 会说明 `is_test_fixture=true`、临时 SQLite、内存检查点。模板不读取真实模型或数据库凭据，不挂 Docker socket，不挂外置 config。源码只读，依赖卷只读，构建及 SQLite 均写临时目录。容器网络并非安全离线沙箱：本次 Docker Desktop 的 internal-only 网络无法发布测试端口，故使用可发布回环端口的网络；不调用外部模型／地图由模拟实现、空 Key 和浏览器 CSP 保证，不应表述为物理断网。
+
+完成后，在另一个 **Ubuntu 终端**先核对，再只清理本次创建的容器：
+
+```bash
+docker ps -a --filter name=trip-ui-acceptance
+docker stop trip-ui-acceptance
+docker rm trip-ui-acceptance
+```
+
+不要添加 `-v`，不要删除依赖卷或数据库卷，不运行 `prune`。关闭测试进程会清空一次性账号与行程；若有需要保留的测试观察，请先记录，不把测试服务当正式数据存储。
+
+## 文档阅读验证
+
+本轮同时执行 `doc-coauthoring`：核对源码事实 → 为新人启动、开发维护和 Agent 面试整理文档 → 由没有对话背景的独立读者回答 8 个问题。反馈后澄清了首次 Key 配置、主机／容器命令位置、幂等启动、恢复条件及 RLS owner 行为；不把兼容入口、检查点或测试结果夸大成全供应商验证、外部调用 exactly-once 或生产级容灾。
