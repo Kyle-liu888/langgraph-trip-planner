@@ -31,14 +31,14 @@
     <h4>游玩攻略</h4>
     <div class="link-row guide-primary">
       <a :href="guides.xiaohongshu" target="_blank" rel="noopener noreferrer">小红书攻略搜索</a>
-      <a :href="guides.dianping" target="_blank" rel="noopener noreferrer">站外搜索大众点评攻略</a>
+      <a :href="guides.dianping" target="_blank" rel="noopener noreferrer">大众点评官网</a>
     </div>
     <div class="link-row">
       <button type="button" @click="copyKeyword">复制搜索词</button>
       <a href="https://www.xiaohongshu.com/" target="_blank" rel="noopener noreferrer">小红书官网</a>
-      <a href="https://www.dianping.com/" target="_blank" rel="noopener noreferrer">大众点评官网</a>
     </div>
     <p class="search-keyword">搜索词：{{ guides.keyword }}</p>
+    <p class="hint">大众点评入口打开官网，不会自动搜索。可先复制搜索词，进入官网或 App 后粘贴查询。</p>
     <p v-if="copyMessage" role="status">{{ copyMessage }}</p>
     <p class="hint">搜索结果未经过本项目审核；第三方平台可能需要登录或验证码。若入口失效，可复制搜索词到平台官网查询。</p>
     </section>

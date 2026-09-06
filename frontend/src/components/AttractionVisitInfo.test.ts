@@ -20,7 +20,11 @@ it('labels zero as a budget estimate and keeps guides during failure', () => {
   expect(root.textContent).toContain('门票预算估算：¥0（仅预算参考）')
   expect(root.textContent).not.toContain('已确认免费')
   expect(root.textContent).toContain('暂无已核验官方入口')
-  expect(root.textContent).toContain('站外搜索大众点评攻略')
+  expect(root.textContent).toContain('大众点评官网')
+  expect(root.textContent).toContain('不会自动搜索')
+  expect(root.textContent).not.toContain('站外搜索')
+  expect(root.querySelectorAll('a[href="https://www.dianping.com/"]')).toHaveLength(1)
+  expect(root.querySelector('a[href*="baidu.com"]')).toBeNull()
   expect(root.textContent).toContain('本次规划未自动校验闭馆日期')
   for (const link of root.querySelectorAll('a')) {
     expect(link.target).toBe('_blank')

@@ -47,8 +47,8 @@ export function guideLinks(city: string, name: string) {
     keyword,
     // Verified in a browser on 2026-09-06: search title and input match the keyword.
     xiaohongshu: 'https://www.xiaohongshu.com/search_result?' + new URLSearchParams({ keyword }),
-    // Dianping's native search could not be verified; this is explicitly an external search.
-    dianping: 'https://www.baidu.com/s?' + new URLSearchParams({ wd: 'site:dianping.com ' + keyword }),
+    // Use the official entry point; do not invent a native search URL or redirect to a search engine.
+    dianping: 'https://www.dianping.com/',
   }
 }
 export const VISIT_NOTICE = '节假日、临时闭馆以官方公告为准；本次规划未自动校验闭馆日期'

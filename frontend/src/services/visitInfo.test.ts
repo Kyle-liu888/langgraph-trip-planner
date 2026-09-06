@@ -6,10 +6,12 @@ vi.mock('./api', () => ({ default: { get: vi.fn() } }))
 const place: Attraction = { name: '故宫博物院', poi_id: 'B1', address: '', location: { longitude: 116.397, latitude: 39.918 }, description: '', visit_duration: 60 }
 beforeEach(() => vi.clearAllMocks())
 
-it('encodes complete keywords, uses explicit domain-limited Dianping search', () => {
+it('encodes complete keywords and opens Dianping itself without a search-engine redirect', () => {
   const links = guideLinks('北京', '故宫 & A/B?')
   expect(new URL(links.xiaohongshu).searchParams.get('keyword')).toBe('北京 故宫 & A/B? 游玩攻略')
-  expect(new URL(links.dianping).searchParams.get('wd')).toBe('site:dianping.com 北京 故宫 & A/B? 游玩攻略')
+  expect(links.keyword).toBe('北京 故宫 & A/B? 游玩攻略')
+  expect(links.dianping).toBe('https://www.dianping.com/')
+  expect(new URL(links.dianping).search).toBe('')
   expect(new URL(links.xiaohongshu).host).toBe('www.xiaohongshu.com')
 })
 it('blocks non-web URLs and embedded credentials', () => {
