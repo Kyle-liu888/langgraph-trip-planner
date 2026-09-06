@@ -3,36 +3,17 @@
     <div class="planner-page">
       <div class="top-banner">
         <div class="top-banner-content">
-          <div class="banner-kicker">AI Trip Planner</div>
-          <h1>创建一份可执行的旅行计划</h1>
-          <p>输入目的地、日期、同行人数和预算偏好，系统会结合工具快照生成每日行程。</p>
+          <h1>下一站，想去哪里？</h1>
+          <p>选一个城市，说说你的旅行偏好。一起把想去的地方，整理成每天都用得上的行程。</p>
         </div>
-        <div class="banner-summary">
-          <div>
-            <span class="summary-label">行程</span>
-            <strong>{{ formData.travel_days }} 天</strong>
-          </div>
-          <div>
-            <span class="summary-label">同行</span>
-            <strong>{{ formData.party.total }} 人</strong>
-          </div>
-          <div>
-            <span class="summary-label">协议</span>
-            <strong>Planner</strong>
-          </div>
-        </div>
+        <JourneySketch class="banner-illustration" />
       </div>
 
       <a-card class="form-card" :bordered="false">
-        <a-alert v-if="quota" type="info" show-icon style="margin-bottom: 20px">
-          <template #message>今日已创建 {{ quota.used }} / {{ quota.limit }} 次行程（北京时间每日重置）</template>
-          <template #description><router-link v-if="quota.active_trip_id" :to="`/trips/${quota.active_trip_id}`">已有行程正在规划，点击查看进度</router-link><span v-else>模型调用可能产生供应商 API 费用；失败后可在历史行程中继续。</span></template>
-        </a-alert>
-        <a-alert v-if="quotaError" type="warning" show-icon :message="quotaError" style="margin-bottom: 20px" />
         <div class="form-card-header">
           <div>
-            <div class="form-eyebrow">Plan Request</div>
-            <h2>行程需求</h2>
+            <h2>写下你的旅行想法</h2>
+            <p>日期、同伴和节奏，都由你决定。</p>
           </div>
           <div class="header-status">
             <span>{{ formData.city || '未选择城市' }}</span>
@@ -104,7 +85,7 @@
             </div>
 
             <a-row :gutter="[20, 16]">
-              <a-col :xs="{ span: 8 }" :md="{ span: 4 }">
+              <a-col :xs="{ span: 8 }">
                 <a-form-item name="adults">
                   <template #label>
                     <span class="form-label">成人</span>
@@ -112,7 +93,7 @@
                   <a-input-number v-model:value="formData.party.adults" :min="0" :max="20" size="large" class="custom-input" style="width: 100%" />
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 8 }" :md="{ span: 4 }">
+              <a-col :xs="{ span: 8 }">
                 <a-form-item name="children">
                   <template #label>
                     <span class="form-label">儿童</span>
@@ -120,7 +101,7 @@
                   <a-input-number v-model:value="formData.party.children" :min="0" :max="20" size="large" class="custom-input" style="width: 100%" />
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 8 }" :md="{ span: 4 }">
+              <a-col :xs="{ span: 8 }">
                 <a-form-item name="elders">
                   <template #label>
                     <span class="form-label">老人</span>
@@ -128,7 +109,7 @@
                   <a-input-number v-model:value="formData.party.elders" :min="0" :max="20" size="large" class="custom-input" style="width: 100%" />
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
+              <a-col :xs="{ span: 24 }" :sm="{ span: 8 }">
                 <a-form-item name="companion_type">
                   <template #label>
                   <span class="form-label">同行类型</span>
@@ -144,10 +125,10 @@
                   </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
+              <a-col :xs="{ span: 24 }" :sm="{ span: 8 }">
                 <a-form-item name="budget_amount">
                   <template #label>
-                    <span class="form-label">总预算</span>
+                    <span class="form-label">总预算（元）</span>
                   </template>
                   <a-input-number
                     v-model:value="formData.budget_constraint.amount"
@@ -160,7 +141,7 @@
                   />
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 24 }" :md="{ span: 4 }">
+              <a-col :xs="{ span: 24 }" :sm="{ span: 8 }">
                 <a-form-item name="budget_level">
                   <template #label>
                   <span class="form-label">预算档位</span>
@@ -186,7 +167,7 @@
             </div>
 
             <a-row :gutter="[20, 16]">
-              <a-col :xs="{ span: 24 }" :lg="{ span: 8 }">
+              <a-col :xs="{ span: 24 }" :sm="{ span: 12 }">
                 <a-form-item name="transportation">
                   <template #label>
                   <span class="form-label">交通方式</span>
@@ -202,7 +183,7 @@
                   </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 24 }" :lg="{ span: 8 }">
+              <a-col :xs="{ span: 24 }" :sm="{ span: 12 }">
                 <a-form-item name="accommodation">
                   <template #label>
                   <span class="form-label">住宿偏好</span>
@@ -218,7 +199,7 @@
                   </a-select>
                 </a-form-item>
               </a-col>
-              <a-col :xs="{ span: 24 }" :lg="{ span: 8 }">
+              <a-col :span="24">
                 <a-form-item name="preferences">
                   <template #label>
                     <span class="form-label">旅行偏好</span>
@@ -231,7 +212,7 @@
                         :value="option.value"
                         class="preference-tag"
                       >
-                        <span class="preference-icon">{{ option.icon }}</span>
+                        <span class="preference-icon" aria-hidden="true">{{ option.icon }}</span>
                         <span>{{ option.label }}</span>
                       </a-checkbox>
                     </a-checkbox-group>
@@ -259,12 +240,13 @@
           </div>
 
           <a-form-item>
+            <div class="submit-area">
+            <p class="submit-note">提交后可实时查看进度，行程自动保存在历史记录。模型调用可能产生 API 费用。</p>
             <a-button
               type="primary"
               html-type="submit"
               :loading="loading"
               size="large"
-              block
               class="submit-button"
             >
               <template v-if="!loading">
@@ -275,6 +257,7 @@
                 <span>正在提交...</span>
               </template>
             </a-button>
+            </div>
           </a-form-item>
 
           <a-form-item v-if="loading">
@@ -286,6 +269,11 @@
             </div>
           </a-form-item>
         </a-form>
+        <a-alert v-if="quota" type="info" show-icon class="quota-note">
+          <template #message>今日已创建 {{ quota.used }} / {{ quota.limit }} 次行程（北京时间每日重置）</template>
+          <template #description><router-link v-if="quota.active_trip_id" :to="`/trips/${quota.active_trip_id}`">已有行程正在规划，点击查看进度</router-link><span v-else>模型调用可能产生供应商 API 费用；失败后可在历史行程中继续。</span></template>
+        </a-alert>
+        <a-alert v-if="quotaError" type="warning" show-icon :message="quotaError" class="quota-note" />
       </a-card>
     </div>
   </div>
@@ -306,6 +294,7 @@ import { createTrip } from '@/services/trips'
 import { useTrips } from '@/stores/trips'
 import api from '@/services/api'
 import { validateCity } from '@/services/destination'
+import JourneySketch from '@/components/JourneySketch.vue'
 import type { TripFormData } from '@/types'
 import type { Dayjs } from 'dayjs'
 
@@ -503,326 +492,59 @@ const handleSubmit = async () => {
 </script>
 
 <style scoped>
-.home-container {
-  min-height: 100vh;
-  padding: 28px 24px 48px;
-  width: 100%;
-  background: #f5f7fa;
+.home-container { padding: 0 36px 56px; width: 100%; }
+.planner-page { max-width: 1120px; margin: 0 auto; }
+.top-banner { display: flex; align-items: center; justify-content: space-between; gap: 32px; padding: 42px 0 32px; }
+.top-banner-content { max-width: 580px; }
+.top-banner h1 { margin: 0; font-family: var(--font-display); font-size: clamp(30px, 3.1vw, 44px); font-weight: 600; line-height: 1.45; letter-spacing: .015em; }
+.top-banner p { margin: 14px 0 0; color: var(--color-muted); font-size: 15px; line-height: 1.9; max-width: 35em; }
+.banner-illustration { width: 275px; flex: 0 0 29%; max-width: 320px; }
+.form-card { border-radius: 18px; border: 1px solid var(--color-line); background: var(--color-surface); box-shadow: 0 4px 24px #203c3805; }
+.form-card :deep(.ant-card-body) { padding: 32px 36px 20px; }
+.form-card-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
+.form-card-header h2 { margin: 0; font-size: 21px; font-weight: 650; }
+.form-card-header p { margin: 6px 0 0; font-size: 13px; color: var(--color-muted); }
+.header-status { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.header-status span { padding: 5px 10px; border-radius: 6px; background: var(--color-paper); color: var(--color-primary); font-size: 12px; }
+.form-section { margin-bottom: 28px; padding-bottom: 8px; border-bottom: 1px solid var(--color-line); }
+.form-section:last-of-type { border-bottom: none; margin-bottom: 8px; }
+.section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; color: var(--color-primary); }
+.section-header :deep(.anticon) { display: grid; place-items: center; width: 30px; height: 30px; background: #edf3ed; border-radius: 8px; font-size: 16px; }
+.section-title { font-size: 15px; font-weight: 650; color: var(--color-ink); }
+.form-label { color: var(--color-muted); font-size: 13px; }
+.custom-checkbox-group { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; }
+.preference-tag { margin: 0; padding: 9px 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); font-size: 13px; transition: background-color .15s, border-color .15s; }
+.preference-tag:hover { border-color: var(--color-primary); }
+.preference-tag.ant-checkbox-wrapper-checked { background: #edf5e9; border-color: #8eac91; color: var(--color-primary); }
+.preference-tag :deep(.ant-checkbox + span) { display: inline-flex; align-items: center; gap: 5px; padding-right: 0; }
+.preference-icon { display: inline-flex; width: 19px; justify-content: center; font-size: 15px; }
+.submit-area { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-top: 4px; }
+.submit-note { max-width: 32em; color: var(--color-muted); font-size: 12px; line-height: 1.8; margin: 0; }
+.submit-button { height: 48px; min-width: 200px; border-radius: 10px; font-size: 15px; }
+.quota-note { margin-top: 22px; }
+.loading-container { text-align: center; padding: 16px; border-radius: 10px; background: var(--color-paper); }
+.loading-status { margin: 12px 0 0; color: var(--color-primary); font-size: 14px; }
+@media (max-width: 1100px) {
+  .home-container { padding: 0 24px 40px; }
+  .top-banner { gap: 12px; padding-top: 28px; }
+  .form-card :deep(.ant-card-body) { padding: 28px; }
 }
-
-.planner-page {
-  max-width: 1280px;
-  margin: 0 auto;
-}
-
-.top-banner {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  min-height: 220px;
-  margin-bottom: -28px;
-  padding: 34px 38px 58px;
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.62)),
-    url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80') center/cover;
-  color: #ffffff;
-}
-
-.top-banner-content {
-  max-width: 620px;
-}
-
-.banner-kicker {
-  margin-bottom: 12px;
-  color: rgba(255, 255, 255, 0.76);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.top-banner h1 {
-  margin: 0;
-  font-size: 36px;
-  font-weight: 760;
-  line-height: 1.18;
-}
-
-.top-banner p {
-  margin: 14px 0 0;
-  color: rgba(255, 255, 255, 0.84);
-  font-size: 16px;
-  line-height: 1.7;
-}
-
-.banner-summary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  min-width: 340px;
-  overflow: hidden;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(10px);
-}
-
-.banner-summary > div {
-  padding: 16px 18px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.summary-label {
-  display: block;
-  margin-bottom: 8px;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 12px;
-}
-
-.banner-summary strong {
-  color: #ffffff;
-  font-size: 20px;
-}
-
-.form-card {
-  position: relative;
-  z-index: 1;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-  background: #ffffff !important;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
-}
-
-.form-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 22px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #edf0f5;
-}
-
-.form-eyebrow {
-  color: #1677ff;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.form-card-header h2 {
-  margin: 6px 0 0;
-  color: #0f172a;
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.header-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.header-status span {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: #f3f6fb;
-  color: #475569;
-  font-size: 13px;
-}
-
-.form-section {
-  margin-bottom: 24px;
-  padding-bottom: 22px;
-  border-bottom: 1px solid #eef2f7;
-}
-
-.form-section:last-of-type {
-  border-bottom: none;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  color: #1677ff;
-}
-
-.section-header :deep(.anticon) {
-  font-size: 17px;
-}
-
-.section-title {
-  color: #0f172a;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.form-label {
-  color: #475569;
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.custom-input :deep(.ant-input) {
-  border-radius: 8px;
-}
-
-.custom-input :deep(.ant-input),
-.custom-textarea :deep(.ant-input),
-.custom-select :deep(.ant-select-selector),
-.custom-input :deep(.ant-picker) {
-  border-color: #d9dee8 !important;
-  border-radius: 8px !important;
-  box-shadow: none !important;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.custom-input :deep(.ant-input:hover),
-.custom-textarea :deep(.ant-input:hover),
-.custom-select:hover :deep(.ant-select-selector),
-.custom-input :deep(.ant-picker:hover) {
-  border-color: #1677ff !important;
-}
-
-.custom-input :deep(.ant-input:focus),
-.custom-textarea :deep(.ant-input:focus),
-.custom-select :deep(.ant-select-focused .ant-select-selector),
-.custom-input :deep(.ant-picker-focused) {
-  border-color: #1677ff !important;
-  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12) !important;
-}
-
-.preference-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.custom-checkbox-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  width: 100%;
-}
-
-.preference-tag :deep(.ant-checkbox-wrapper) {
-  margin: 0 !important;
-  padding: 7px 12px 7px 10px;
-  border: 1px solid #d9dee8;
-  border-radius: 999px;
-  transition: all 0.3s ease;
-  background: #ffffff;
-  font-size: 14px;
-}
-
-.preference-tag :deep(.ant-checkbox-wrapper:hover) {
-  border-color: #1677ff;
-  background: #f0f6ff;
-}
-
-.preference-tag :deep(.ant-checkbox-wrapper-checked) {
-  border-color: #1677ff;
-  background: #eaf3ff;
-  color: #0958d9;
-}
-
-.preference-tag :deep(.ant-checkbox + span) {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.preference-icon {
-  display: inline-flex;
-  width: 18px;
-  justify-content: center;
-}
-
-.submit-button {
-  height: 52px;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 700;
-  background: #1677ff;
-  border: none;
-  box-shadow: 0 10px 22px rgba(22, 119, 255, 0.24);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-
-.submit-button :deep(.anticon) {
-  margin-right: 8px;
-}
-
-.submit-button:hover {
-  background: #0958d9 !important;
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(22, 119, 255, 0.3);
-}
-
-.submit-button:active {
-  transform: translateY(0);
-}
-
-.loading-container {
-  text-align: center;
-  padding: 20px;
-  border: 1px dashed #1677ff;
-  border-radius: 8px;
-  background: #f7fbff;
-}
-
-.loading-status {
-  margin: 14px 0 0;
-  color: #0958d9;
-  font-size: 15px;
-  font-weight: 650;
-}
-
-@media (max-width: 960px) {
-  .top-banner {
-    display: block;
-    min-height: auto;
-    padding: 28px 24px 52px;
-  }
-
-  .banner-summary {
-    min-width: 0;
-    margin-top: 22px;
-  }
-}
-
-@media (max-width: 720px) {
-  .home-container {
-    padding: 16px 12px 32px;
-  }
-
-  .top-banner {
-    margin-bottom: -18px;
-    padding: 24px 18px 42px;
-  }
-
-  .top-banner h1 {
-    font-size: 28px;
-  }
-
-  .form-card :deep(.ant-card-body) {
-    padding: 20px;
-  }
-
-  .banner-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .form-card-header {
-    flex-direction: column;
-  }
-
-  .header-status {
-    justify-content: flex-start;
-  }
+@media (max-width: 600px) {
+  .home-container { padding: 0 16px 32px; }
+  .top-banner { padding: 28px 2px; }
+  .top-banner h1 { font-size: 30px; }
+  .top-banner p { font-size: 14px; }
+  .banner-illustration { display: none; }
+  .form-card { border-radius: 14px; }
+  .form-card :deep(.ant-card-body) { padding: 22px 18px 12px; }
+  .form-card-header { align-items: flex-start; gap: 12px; }
+  .form-card-header h2 { font-size: 19px; }
+  .header-status { max-width: 116px; gap: 5px; }
+  .header-status span { padding: 4px 7px; }
+  .form-section { margin-bottom: 22px; }
+  .preference-tag { padding: 8px 10px; }
+  .custom-checkbox-group { gap: 8px; }
+  .submit-area { flex-direction: column; align-items: stretch; gap: 14px; }
+  .submit-button { width: 100%; }
 }
 </style>

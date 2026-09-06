@@ -6,7 +6,7 @@
         <ArrowLeftOutlined />
         返回首页
       </a-button>
-      <a-space size="middle">
+      <a-space size="middle" wrap>
         <a-button v-if="!editMode" @click="toggleEditMode" type="default">
           <EditOutlined />
           编辑行程
@@ -43,38 +43,15 @@
     </div>
 
     <div v-if="tripPlan" class="content-wrapper">
-      <!-- 侧边导航 -->
-      <div class="side-nav">
-        <a-affix :offset-top="80">
-          <a-menu mode="inline" :selected-keys="[activeSection]" @click="scrollToSection">
-            <a-menu-item key="overview">
-              <OrderedListOutlined />
-              <span>行程概览</span>
-            </a-menu-item>
-            <a-menu-item key="budget" v-if="tripPlan.budget">
-              <WalletOutlined />
-              <span>预算明细</span>
-            </a-menu-item>
-            <a-menu-item key="map">
-              <EnvironmentOutlined />
-              <span>全程地图</span>
-            </a-menu-item>
-            <a-menu-item key="daily-maps">
-              <EnvironmentOutlined />
-              <span>每日地图</span>
-            </a-menu-item>
-            <a-sub-menu key="days" title="每日行程">
-              <a-menu-item v-for="(day, index) in tripPlan.days" :key="`day-${index}`">
-                第{{ day.day_index + 1 }}天
-              </a-menu-item>
-            </a-sub-menu>
-            <a-menu-item key="weather" v-if="tripPlan.weather_info && tripPlan.weather_info.length > 0">
-              <CloudOutlined />
-              <span>天气信息</span>
-            </a-menu-item>
-          </a-menu>
-        </a-affix>
-      </div>
+      <nav class="itinerary-nav" aria-label="行程章节">
+        <button :aria-current="activeSection === 'overview' ? 'location' : undefined" @click="scrollToSection({ key: 'overview' })"><OrderedListOutlined />行程概览</button>
+        <button v-if="tripPlan.budget" :aria-current="activeSection === 'budget' ? 'location' : undefined" @click="scrollToSection({ key: 'budget' })"><WalletOutlined />预算</button>
+        <button :aria-current="activeSection === 'map' ? 'location' : undefined" @click="scrollToSection({ key: 'map' })"><EnvironmentOutlined />全程地图</button>
+        <button :aria-current="activeSection === 'daily-maps' ? 'location' : undefined" @click="scrollToSection({ key: 'daily-maps' })">每日地图</button>
+        <span class="nav-divider" aria-hidden="true"></span>
+        <button v-for="(day, index) in tripPlan.days" :key="`day-${index}`" :aria-current="activeSection === `day-${index}` ? 'location' : undefined" @click="scrollToSection({ key: `day-${index}` })">第 {{ day.day_index + 1 }} 天</button>
+        <button v-if="tripPlan.weather_info?.length" :aria-current="activeSection === 'weather' ? 'location' : undefined" @click="scrollToSection({ key: 'weather' })"><CloudOutlined />天气</button>
+      </nav>
 
       <!-- 主内容区 -->
       <div class="main-content">
@@ -221,21 +198,21 @@
                             @click="moveAttraction(day.day_index, index, 'up')"
                             :disabled="index === 0"
                           >
-                            ↑
+                            <span aria-hidden="true">↑</span><span class="sr-only">上移 {{ item.name }}</span>
                           </a-button>
                           <a-button
                             size="small"
                             @click="moveAttraction(day.day_index, index, 'down')"
                             :disabled="index === day.attractions.length - 1"
                           >
-                            ↓
+                            <span aria-hidden="true">↓</span><span class="sr-only">下移 {{ item.name }}</span>
                           </a-button>
                           <a-button
                             size="small"
                             danger
                             @click="deleteAttraction(day.day_index, index)"
                           >
-                            🗑️
+                            <span>移除</span><span class="sr-only"> {{ item.name }}</span>
                           </a-button>
                         </a-space>
                       </template>
@@ -257,7 +234,7 @@
                       </div>
 
                       <!-- 编辑模式下可编辑的字段 -->
-                      <div v-if="editMode">
+                      <div v-if="editMode" class="attraction-details attraction-edit">
                         <p><strong>地址:</strong></p>
                         <a-input v-model:value="item.address" size="small" style="margin-bottom: 8px" />
 
@@ -269,7 +246,7 @@
                       </div>
 
                       <!-- 查看模式 -->
-                      <div v-else>
+                      <div v-else class="attraction-details">
                         <p><strong>地址:</strong> {{ item.address }}</p>
                         <p><strong>游览时长:</strong> {{ item.visit_duration }}分钟</p>
                         <p><strong>描述:</strong> {{ item.description }}</p>
@@ -319,7 +296,7 @@
         <a-card id="weather" v-if="tripPlan.weather_info && tripPlan.weather_info.length > 0" title="天气信息" style="margin-top: 20px" :bordered="false">
         <a-list
           :data-source="tripPlan.weather_info"
-          :grid="{ gutter: 16, column: 3 }"
+          :grid="{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 2, xl: 3 }"
         >
           <template #renderItem="{ item }">
             <a-list-item>
@@ -361,10 +338,8 @@
     </a-empty>
 
     <!-- 回到顶部按钮 -->
-    <a-back-top :visibility-height="300">
-      <div class="back-top-button">
-        ↑
-      </div>
+    <a-back-top :visibility-height="300" :duration="1" shape="square" type="primary" class="back-top-button" aria-label="回到页面顶部" title="回到页面顶部">
+      <template #icon><span aria-hidden="true">↑</span></template>
     </a-back-top>
   </div>
 </template>
@@ -486,7 +461,8 @@ const scrollToSection = ({ key }: { key: string }) => {
 
   const element = document.getElementById(key)
   if (element) {
-    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    element.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
   }
 }
 
@@ -1310,667 +1286,133 @@ const destroyMaps = () => {
 
 <style scoped>
 .result-container {
-  min-height: 100vh;
-  background: #f5f7fa;
-  padding: 28px 24px 48px;
-}
-
-.page-header {
-  max-width: 1280px;
-  margin: 0 auto 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.back-button {
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-.page-header :deep(.ant-btn .anticon) {
-  margin-right: 6px;
-}
-
-/* 内容布局 */
-.content-wrapper {
-  max-width: 1280px;
-  margin: 0 auto;
-  display: flex;
-  gap: 20px;
-}
-
-.side-nav {
-  width: 240px;
-  flex-shrink: 0;
-}
-
-.side-nav :deep(.ant-menu) {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-}
-
-.side-nav :deep(.ant-menu-item) {
-  margin: 4px 8px;
-  border-radius: 8px;
-  transition: all 0.3s ease;
-}
-
-.side-nav :deep(.ant-menu-item-selected) {
-  background: #eaf3ff;
-  color: #0958d9;
-}
-
-.side-nav :deep(.ant-menu-item:hover) {
-  background: #f0f6ff;
-  color: #0958d9;
-}
-
-.main-content {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 景点图片样式 */
-.attraction-image-wrapper {
-  position: relative;
-  margin-bottom: 12px;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.attraction-photo-placeholder {
-  height: 100%;
-  min-height: 180px;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  color: #64748b;
-  background: #f1f5f9;
-}
-
-.photo-source {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  padding: 2px 6px;
-  color: white;
-  background: #0009;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.attraction-image {
-  width: 100%;
-  height: 200px;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.attraction-image-wrapper:hover .attraction-image {
-  transform: scale(1.05);
-}
-
-.attraction-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  background: #1677ff;
-  color: white;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.badge-number {
-  font-size: 18px;
-}
-
-.price-tag {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: rgba(15, 23, 42, 0.82);
-  color: white;
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-weight: bold;
-  font-size: 14px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-/* 天气卡片样式 */
-.weather-card {
-  background: #f8fafc;
-  border: none !important;
-  transition: all 0.3s ease;
-}
-
-.weather-card-sun {
-  background: #fff7ed;
-}
-
-.weather-card-cloud {
-  background: #f0f6ff;
-}
-
-.weather-card-rain {
-  background: #e0f2fe;
-}
-
-.weather-card-snow {
-  background: #f8fafc;
-}
-
-.weather-card-haze {
-  background: #f5f5f4;
-}
-
-.weather-card-unknown {
-  background: #f8fafc;
-}
-
-.weather-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.1);
-}
-
-.weather-date {
-  font-size: 16px;
-  font-weight: bold;
-  color: #0f172a;
-  margin-bottom: 12px;
-  text-align: center;
-}
-
-.weather-info-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.weather-icon {
-  font-size: 24px;
-  width: 30px;
-  text-align: center;
-}
-
-.weather-label {
-  font-size: 12px;
-  color: #666;
-}
-
-.weather-value {
-  font-size: 16px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.weather-wind {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(15, 23, 42, 0.12);
-  text-align: center;
-  color: #475569;
-  font-size: 14px;
-}
-
-/* 回到顶部按钮 */
-.back-top-button {
-  width: 50px;
-  height: 50px;
-  background: #1677ff;
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: bold;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.back-top-button:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
-}
-
-/* 酒店卡片样式 */
-.hotel-card {
-  border: 1px solid #e5e7eb !important;
-  background: #ffffff;
-}
-
-.hotel-card :deep(.ant-card-head) {
-  background: #f8fafc;
-}
-
-.hotel-title {
-  color: #0f172a !important;
-  font-weight: 700;
-}
-
-/* 顶部信息区布局 */
-.top-info-section {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.left-info {
-  flex: 0 0 400px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.right-map {
-  flex: 1;
-}
-
-/* 行程概览卡片 */
-.overview-card {
-  height: fit-content;
-}
-
-.overview-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.info-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #666;
-}
-
-.info-value {
-  font-size: 15px;
-  color: #333;
-  line-height: 1.6;
-}
-
-/* 预算卡片 */
-.budget-card {
-  height: fit-content;
-}
-
-.budget-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.budget-item {
-  text-align: center;
-  padding: 12px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.budget-label {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-.budget-value {
-  font-size: 20px;
-  font-weight: 700;
-  color: #1677ff;
-}
-
-.budget-total {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  background: #1677ff;
-  border-radius: 8px;
-  color: white;
-}
-
-.total-label {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.total-value {
-  font-size: 28px;
-  font-weight: 700;
-}
-
-/* 地图卡片 */
-.map-card {
-  height: 100%;
-  min-height: 500px;
-}
-
-.map-card :deep(.ant-card-body) {
-  height: calc(100% - 57px);
-  padding: 0;
-}
-
-.map-shell {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 320px;
-  overflow: hidden;
-  border-radius: 0 0 8px 8px;
-}
-
-.amap-container {
-  width: 100%;
-  height: 100%;
-  min-height: inherit;
-}
-
-.map-legend {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: 2;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 8px;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-  color: #334155;
-  font-size: 12px;
-}
-
-.map-legend.compact {
-  gap: 8px;
-  padding: 6px 8px;
-}
-
-.map-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.legend-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.legend-hotel {
-  background: #ef4444;
-}
-
-.legend-attraction {
-  background: #1677ff;
-}
-
-.legend-meal {
-  background: #f59e0b;
-}
-
-.map-empty-state {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(248, 250, 252, 0.86);
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.daily-maps-card {
-  margin-top: 20px;
-}
-
-.daily-map-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.daily-map-panel {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #ffffff;
-}
-
-.daily-map-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid #edf0f5;
-  background: #f8fafc;
-}
-
-.daily-map-title {
-  color: #0f172a;
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.daily-map-date {
-  margin-top: 2px;
-  color: #64748b;
-  font-size: 12px;
-}
-
-.daily-map-count {
-  flex-shrink: 0;
-  padding: 4px 8px;
-  border: 1px solid #dbeafe;
-  border-radius: 999px;
-  background: #eff6ff;
-  color: #0958d9;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.daily-map-shell {
-  height: 320px;
-  min-height: 320px;
-  border-radius: 0;
-}
-
-/* 每日行程卡片 */
-.days-card {
-  margin-top: 20px;
-}
-
-.day-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.day-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-}
-
-.day-date {
-  font-size: 14px;
-  color: #999;
-}
-
-.day-info {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.info-row {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.info-row:last-child {
-  margin-bottom: 0;
-}
-
-.info-row .label {
-  font-weight: 600;
-  color: #475569;
-  min-width: 100px;
-}
-
-.info-row .value {
-  color: #0f172a;
-  flex: 1;
-}
-
-/* 卡片样式优化 */
-:deep(.ant-card) {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-  margin-bottom: 20px;
-  transition: box-shadow 0.2s ease;
-}
-
-:deep(.ant-card:hover) {
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
-}
-
-:deep(.ant-card-head) {
-  background: #ffffff;
-  color: #0f172a !important;
-  border-bottom: 1px solid #edf0f5;
-  border-radius: 8px 8px 0 0;
-  font-weight: 700;
-}
-
-:deep(.ant-card-head-title) {
-  color: #0f172a !important;
-  font-size: 17px;
-}
-
-:deep(.ant-card-head-title span) {
-  color: #0f172a !important;
-}
-
-/* Collapse样式 */
-:deep(.ant-collapse) {
-  border: none;
-  background: transparent;
-}
-
-:deep(.ant-collapse-item) {
-  margin-bottom: 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-:deep(.ant-collapse-header) {
-  background: #f8fafc;
-  padding: 16px 20px !important;
-  font-weight: 600;
-}
-
-:deep(.ant-collapse-content) {
-  border-top: 1px solid #e5e7eb;
-}
-
-:deep(.ant-collapse-content-box) {
-  padding: 20px;
-}
-
-/* 统计卡片样式 */
-:deep(.ant-statistic-title) {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
-}
-
-:deep(.ant-statistic-content) {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1677ff;
-}
-
-/* 景点卡片样式 */
-:deep(.ant-list-item) {
-  transition: all 0.3s ease;
-}
-
-:deep(.ant-list-item:hover) {
-  transform: none;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .result-container {
-    padding: 20px 10px;
-  }
-
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .content-wrapper {
-    display: block;
-  }
-
-  .side-nav {
-    display: none;
-  }
-
-  .top-info-section {
-    flex-direction: column;
-  }
-
-  .left-info {
-    flex: 1;
-  }
-
-  .map-card {
-    min-height: 360px;
-  }
-
-  .daily-map-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .map-legend {
-    flex-wrap: wrap;
-    right: 12px;
-  }
-}
+  max-width: 1440px;
+  margin: auto;
+  padding: 0 36px 64px;
+  color: var(--color-ink, #203c38);
+}
+.page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 0 22px; flex-wrap: wrap; }
+.back-button { border-color: transparent; background: transparent; padding-left: 0; font-size: 14px; color: var(--color-muted, #657873); }
+.content-wrapper { min-width: 0; }
+.itinerary-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; max-width: 100%; padding: 8px 0 14px; margin-bottom: 22px; border-bottom: 1px solid var(--color-line, #dce5df); scrollbar-width: thin; }
+.itinerary-nav button { display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; min-height: 40px; padding: 8px 13px; color: var(--color-muted, #657873); border: none; border-radius: 7px; background: transparent; cursor: pointer; white-space: nowrap; font: inherit; font-size: 13px; }
+.itinerary-nav button:hover { background: #eaf0e9; color: var(--color-primary, #176b5b); }
+.itinerary-nav button[aria-current] { color: #fff; background: var(--color-primary, #176b5b); }
+.itinerary-nav button:focus-visible { outline: 2px solid var(--color-primary, #176b5b); outline-offset: 2px; }
+.nav-divider { flex: 0 0 1px; height: 20px; background: var(--color-line, #dce5df); margin: 0 9px; }
+.main-content { min-width: 0; }
+.main-content [id] { scroll-margin-top: 90px; }
+.top-info-section { display: grid; grid-template-columns: minmax(280px, .95fr) minmax(300px, 1.1fr); align-items: stretch; gap: 22px; }
+.left-info { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.right-map { min-width: 0; }
+:deep(.ant-card) { background: var(--color-surface, #fff); border: 1px solid var(--color-line, #dce5df); border-radius: 12px; box-shadow: none; }
+:deep(.ant-card-head) { min-height: 56px; padding: 0 22px; border-color: var(--color-line, #dce5df); background: transparent; }
+:deep(.ant-card-head-title) { color: var(--color-ink, #203c38); font-size: 16px; white-space: normal; overflow-wrap: anywhere; }
+:deep(.ant-card-body) { padding: 22px; }
+.overview-card :deep(.ant-card-head-title) { font-family: STKaiti, KaiTi, 'Noto Serif CJK SC', serif; font-size: 26px; }
+.overview-content { display: grid; gap: 16px; }
+.info-item { display: grid; gap: 6px; }
+.info-label, .budget-label { font-size: 12px; color: var(--color-muted, #657873); }
+.info-value { line-height: 1.85; font-size: 14px; overflow-wrap: anywhere; }
+.budget-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 18px; margin-bottom: 22px; }
+.budget-value { margin-top: 5px; font-size: 21px; color: var(--color-ink, #203c38); font-weight: 600; font-variant-numeric: tabular-nums; }
+.budget-total { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 16px 18px; background: #eaf2e5; border-radius: 8px; color: #254e3a; }
+.total-label { font-size: 13px; }
+.total-value { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.map-card { height: 100%; display: flex; flex-direction: column; min-height: 480px; }
+.map-card :deep(.ant-card-body) { flex: 1; padding: 0; display: flex; min-height: 360px; }
+.map-shell { position: relative; width: 100%; height: 100%; min-height: 360px; overflow: hidden; border-radius: 0 0 12px 12px; background: #eaf0e9; }
+.map-card .map-shell { flex: 1; height: auto; }
+.amap-container { width: 100%; height: 100%; min-height: inherit; }
+.map-card .amap-container { position: absolute; inset: 0; }
+.map-legend { position: absolute; left: 12px; bottom: 16px; z-index: 2; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 8px 10px; background: rgba(255,255,255,.95); border: 1px solid var(--color-line, #dce5df); border-radius: 6px; color: #334155; font-size: 12px; }
+.map-legend.compact { gap: 8px; padding: 6px 8px; }
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.legend-hotel { background: #ef4444; }
+.legend-attraction { background: #1677ff; }
+.legend-meal { background: #f59e0b; }
+.map-empty-state { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; background: rgba(247,249,246,.92); color: var(--color-muted, #657873); font-size: 14px; }
+.daily-maps-card, .days-card { margin-top: 28px; }
+.daily-map-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.daily-map-panel { min-width: 0; overflow: hidden; border: 1px solid var(--color-line, #dce5df); border-radius: 9px; }
+.daily-map-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: var(--color-paper, #f7f9f6); }
+.daily-map-title { font-size: 14px; font-weight: 650; }
+.daily-map-date { margin-top: 3px; color: var(--color-muted, #657873); font-size: 12px; }
+.daily-map-count { font-size: 12px; color: var(--color-primary, #176b5b); white-space: nowrap; }
+.daily-map-shell { height: 280px; min-height: 280px; border-radius: 0; }
+.day-header { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; width: 100%; }
+.day-title { font-size: 18px; color: var(--color-ink, #203c38); }
+.day-date { color: var(--color-muted, #657873); font-size: 13px; font-weight: 400; }
+.day-info { padding: 18px 20px; margin-bottom: 20px; background: var(--color-paper, #f7f9f6); border-left: 2px solid #aac9aa; border-radius: 0 7px 7px 0; }
+.info-row { display: flex; gap: 18px; margin-bottom: 10px; line-height: 1.85; }
+.info-row:last-child { margin-bottom: 0; }
+.info-row .label { min-width: 60px; color: var(--color-muted, #657873); font-size: 12px; }
+.info-row .value { flex: 1; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+:deep(.ant-collapse) { border: none; background: transparent; }
+:deep(.ant-collapse-item) { margin-bottom: 14px; border: 1px solid var(--color-line, #dce5df); border-radius: 9px; overflow: hidden; }
+:deep(.ant-collapse-header) { background: #eef3eb; padding: 17px 20px !important; font-weight: 600; align-items: center !important; }
+:deep(.ant-collapse-content) { border-top: 1px solid var(--color-line, #dce5df); }
+:deep(.ant-collapse-content-box) { padding: 24px; }
+:deep(.ant-divider-inner-text) { color: var(--color-ink, #203c38); font-size: 14px; }
+.attraction-card :deep(.ant-card-head) { padding: 0 18px; min-height: 54px; }
+.attraction-card :deep(.ant-card-head-title) { font-size: 19px; font-weight: 650; }
+.attraction-card :deep(.ant-card-body) { padding: 18px; }
+.attraction-image-wrapper { position: relative; margin-bottom: 20px; border-radius: 8px; overflow: hidden; }
+.attraction-image { width: 100%; height: clamp(200px, 24vw, 340px); object-fit: cover; display: block; }
+.attraction-photo-placeholder { min-height: 180px; display: grid; place-items: center; padding: 25px; color: var(--color-muted, #657873); background: #eef3eb; font-size: 13px; }
+.photo-source { position: absolute; bottom: 8px; right: 8px; padding: 3px 7px; color: #fff; background: #203c38cf; border-radius: 4px; font-size: 11px; }
+.attraction-badge { position: absolute; top: 12px; left: 12px; width: 34px; height: 40px; border-radius: 4px 4px 12px 4px; display: grid; place-items: center; font-size: 17px; font-weight: 650; color: #fff; background: var(--color-primary, #176b5b); }
+.attraction-details { font-size: 14px; line-height: 1.85; overflow-wrap: anywhere; }
+.attraction-details p { margin: 8px 0; }
+.attraction-details strong { font-weight: 500; color: var(--color-muted, #657873); margin-right: 6px; }
+.attraction-edit { padding: 4px 0; }
+.hotel-card :deep(.ant-card-head) { background: var(--color-paper, #f7f9f6); }
+.hotel-title { color: var(--color-ink, #203c38); }
+:deep(.ant-descriptions-item-content) { overflow-wrap: anywhere; }
+.weather-card { background: var(--color-paper, #f7f9f6); }
+.weather-card-sun { background: #fcf8e9; }
+.weather-card-cloud, .weather-card-rain { background: #edf4f3; }
+.weather-card-snow, .weather-card-haze, .weather-card-unknown { background: #f3f4f0; }
+.weather-date { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
+.weather-info-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.weather-icon { width: 28px; font-size: 23px; text-align: center; }
+.weather-label { color: var(--color-muted, #657873); font-size: 12px; }
+.weather-value { font-size: 15px; font-weight: 500; }
+.weather-wind { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-line, #dce5df); font-size: 12px; color: var(--color-muted, #657873); }
+.back-top-button { width: 44px; height: 44px; border: none; border-radius: 10px; display: grid; place-items: center; background: var(--color-primary, #176b5b); color: #fff; font-size: 23px; cursor: pointer; }
+.back-top-button :deep(.ant-float-btn-body) { background: var(--color-primary, #176b5b); border-radius: 10px; }
+.back-top-button :deep(.ant-float-btn-icon) { color: #fff; font-size: 23px; }
+.back-top-button:focus-visible { outline: 2px solid var(--color-primary, #176b5b); outline-offset: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 1180px) {
+  .result-container { padding: 0 24px 48px; }
+  .top-info-section { grid-template-columns: 1fr; }
+  .map-card { min-height: 400px; }
+  .left-info { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+}
+@media (max-width: 760px) {
+  .result-container { padding: 0 16px 40px; }
+  .page-header { gap: 10px; padding-bottom: 12px; }
+  .page-header :deep(.ant-space) { gap: 8px !important; }
+  .back-button { height: 34px; }
+  .itinerary-nav { margin-bottom: 18px; padding-bottom: 10px; }
+  .left-info, .daily-map-grid { grid-template-columns: 1fr; }
+  .top-info-section { gap: 18px; }
+  :deep(.ant-card-head) { padding: 0 16px; }
+  :deep(.ant-card-body) { padding: 16px; }
+  :deep(.ant-collapse-header) { padding: 15px 14px !important; }
+  :deep(.ant-collapse-content-box) { padding: 12px; }
+  .attraction-card :deep(.ant-card-head) { padding: 0 12px; }
+  .attraction-card :deep(.ant-card-body) { padding: 12px; }
+  .day-info { padding: 14px; }
+  .info-row { gap: 12px; }
+  .map-card, .map-card :deep(.ant-card-body) { min-height: 320px; }
+  .map-shell { min-height: 280px; }
+  .map-legend { right: auto; max-width: calc(100% - 24px); }
+  .daily-maps-card, .days-card { margin-top: 22px; }
+  .attraction-card :deep(.ant-card-head-wrapper) { flex-wrap: wrap; padding: 10px 0; gap: 6px; }
+  .attraction-card :deep(.ant-card-extra) { margin-inline-start: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .result-container :deep(*) { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
 </style>

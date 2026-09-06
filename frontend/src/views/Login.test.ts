@@ -66,6 +66,19 @@ describe('local login form submission', () => {
   const posts = () => request.mock.calls.filter(([, options]) => options.method === 'POST')
   const clickSubmit = () => root.querySelector<HTMLButtonElement>('button[type=submit]')!.click()
 
+  it('keeps clear form headings, password hints and decorative artwork outside the reading order', async () => {
+    expect(root.querySelector('h1')?.textContent).toContain('写进行程里')
+    expect(root.querySelector('section[aria-labelledby="form-title"] h2')?.textContent).toBe('欢迎回来')
+    expect(root.querySelector('.login-sketch')?.getAttribute('aria-hidden')).toBe('true')
+    expect(root.querySelector('input[type=password]')?.getAttribute('autocomplete')).toBe('current-password')
+    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('还没有账号'))!.click()
+    await nextTick()
+    expect(root.querySelector('#form-title')?.textContent).toBe('创建你的账号')
+    expect(root.querySelector('input[type=password]')?.getAttribute('autocomplete')).toBe('new-password')
+    expect(root.textContent).toContain('邮箱仅作为登录标识，不发送验证邮件')
+    expect(posts()).toHaveLength(0)
+  })
+
   it.each([false, true])('submits valid credentials through the real form (register=%s)', async register => {
     if (register) {
       Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('还没有账号'))!.click()
