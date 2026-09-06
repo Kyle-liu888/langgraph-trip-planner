@@ -57,6 +57,12 @@ async def lifespan(application: FastAPI):
                 await saver.setup()
                 stage = "model_configuration"
                 planner = TripPlannerService(settings=settings, checkpointer=saver)
+                expected_budget = settings.llm_timeout * settings.planner_max_attempts + 30
+                if settings.planner_request_timeout < expected_budget:
+                    logger.warning("config.timeout_budget_short", extra={
+                        "planner_timeout_seconds": settings.planner_request_timeout,
+                        "suggested_min_seconds": expected_budget,
+                        "hint": "整体时间预算可能在模型重试结束前耗尽"})
                 runs = RunManager(sessions, planner, saver, settings)
                 await runs.recover_interrupted()
                 application.state.run_manager = runs

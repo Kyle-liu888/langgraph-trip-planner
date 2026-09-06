@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 import time
+import asyncio
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 
 from .capabilities import infer_capabilities
 from .config import ModelConfig
+from .progress import error_details, invoke_with_progress
 from ..observability import emit_progress
 
 
@@ -73,13 +75,17 @@ async def ainvoke_structured(
     errors: list[str] = []
     kwargs = invocation_kwargs or {}
 
-    for method in infer_capabilities(model_config).structured_output_methods:
+    methods = infer_capabilities(model_config).structured_output_methods
+    for index, method in enumerate(methods):
         started = time.perf_counter()
         fields = {"provider": model_config.provider, "model": model_config.model, "strategy": method}
-        emit_progress("model.started", **fields)
+        emit_progress("model.started", **fields, timeout_seconds=model_config.timeout,
+                      sdk_max_retries=model_config.max_retries,
+                      input_chars=sum(len(str(message.content)) for message in messages),
+                      max_output_tokens=kwargs.get("max_tokens"))
         try:
             if method == "prompt":
-                raw = await model.ainvoke(messages, **kwargs)
+                raw = await invoke_with_progress(model, messages, kwargs, model_config, fields)
                 emit_progress("model.completed", **fields,
                               elapsed_ms=round((time.perf_counter() - started) * 1000),
                               usage=getattr(raw, "usage_metadata", None))
@@ -91,7 +97,7 @@ async def ainvoke_structured(
                 method=method,
                 include_raw=True,
             )
-            result = await runnable.ainvoke(messages, **kwargs)
+            result = await invoke_with_progress(runnable, messages, kwargs, model_config, fields)
             emit_progress("model.completed", **fields,
                           elapsed_ms=round((time.perf_counter() - started) * 1000),
                           usage=getattr(result.get("raw"), "usage_metadata", None))
@@ -109,13 +115,23 @@ async def ainvoke_structured(
                 raw_message=raw if isinstance(raw, AIMessage) else None,
                 strategy_errors=errors,
             )
+        except asyncio.CancelledError:
+            emit_progress("model.cancelled", **fields, label="模型调用被任务超时或服务停止中断",
+                          elapsed_ms=round((time.perf_counter() - started) * 1000))
+            raise
         except StructuredOutputError as exc:
-            emit_progress("model.failed", **fields, error_type=type(exc).__name__)
+            emit_progress("model.failed", **fields, **error_details(exc),
+                          elapsed_ms=round((time.perf_counter() - started) * 1000))
             errors.append(f"{method}: {exc}")
         except Exception as exc:
-            emit_progress("model.failed", **fields, error_type=type(exc).__name__)
+            emit_progress("model.failed", **fields, **error_details(exc),
+                          elapsed_ms=round((time.perf_counter() - started) * 1000))
             if not _is_capability_error(exc):
                 raise
             errors.append(f"{method}: {exc}")
+
+        if index + 1 < len(methods):
+            emit_progress("model.strategy_retry", **fields, next_strategy=methods[index + 1],
+                          label="当前结构化输出策略失败，尝试兼容策略")
 
     raise StructuredOutputError("; ".join(errors) or "没有可用的结构化输出策略")

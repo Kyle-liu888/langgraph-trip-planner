@@ -1,12 +1,13 @@
 """Planner 输入压缩逻辑。"""
 
 from typing import Any, Dict, List
+import json
 
 
 def compact_for_planner(planner_context: Dict[str, Any]) -> Dict[str, Any]:
     """把原始工具快照压缩成模型真正需要看的 Planner 输入。"""
     snapshot = planner_context.get("tool_snapshot", {})
-    return {
+    result = {
         "version": planner_context.get("version", "planner_context"),
         "request": planner_context.get("request", {}),
         "party": planner_context.get("party", {}),
@@ -38,6 +39,22 @@ def compact_for_planner(planner_context: Dict[str, Any]) -> Dict[str, Any]:
         },
         "planner_constraints": planner_context.get("planner_constraints", {}),
     }
+    # Identical attraction records often occur in several retrieval buckets.
+    # Keep all distinct choices and conflicting price/location variants, but
+    # present a repeated record only once. The original context is untouched.
+    seen = set()
+    for bucket in ("classic_pois", "preference_pois", "scenic_pois", "experience_pois"):
+        unique = []
+        for poi in result["tool_snapshot"][bucket]:
+            identity = json.dumps({key: value for key, value in poi.items() if key != "source_bucket"},
+                                  sort_keys=True, ensure_ascii=False)
+            if identity not in seen:
+                seen.add(identity)
+                unique.append(poi)
+        result["tool_snapshot"][bucket] = unique
+    for bucket in result["tool_snapshot"]["candidate_counts"]:
+        result["tool_snapshot"]["candidate_counts"][bucket] = len(result["tool_snapshot"][bucket])
+    return result
 
 
 def compact_weather(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -60,22 +77,22 @@ def compact_pois(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "address": short_text(item.get("address", ""), 48),
             "location": item.get("location"),
             "rating": item.get("rating", ""),
-            "cost": item.get("cost", ""),
             "estimated_cost_hint": item.get("estimated_cost_hint"),
             "ticket_price_hint": item.get("ticket_price_hint"),
             "ticket_price_season": item.get("ticket_price_season"),
             "meal_cost_hint": item.get("meal_cost_hint"),
             "cost_unit": item.get("cost_unit"),
             "cost_source": item.get("cost_source") or item.get("ticket_price_source"),
-            "ticket_price_source": item.get("ticket_price_source"),
             "meal_roles": item.get("meal_roles"),
             "cuisine_tags": item.get("cuisine_tags"),
             "diet_tags": item.get("diet_tags"),
             "avoid_risk_keywords": item.get("avoid_risk_keywords"),
             "price_level": item.get("price_level"),
-            "matched_keyword": item.get("source_keyword", ""),
             "source_bucket": item.get("source_bucket", ""),
         }
+        # Raw vendor cost is redundant when a normalized, typed price hint exists.
+        if all(item.get(key) is None for key in ("estimated_cost_hint", "ticket_price_hint", "meal_cost_hint")):
+            compact["cost"] = item.get("cost", "")
         results.append(drop_empty_values(compact))
     return results
 

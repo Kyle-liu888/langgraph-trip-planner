@@ -43,4 +43,8 @@ def create_chat_model(config: ModelConfig | None = None) -> BaseChatModel:
 
     if not isinstance(model, BaseChatModel):
         raise ModelConfigurationError(f"{current.display_name} 没有返回 LangChain BaseChatModel")
+    # Only integrations declaring this option receive it; other providers still
+    # work with heartbeat progress and their native invocation behavior.
+    if "streaming" in getattr(type(model), "model_fields", {}) and "streaming" not in current.model_kwargs:
+        model.streaming = current.streaming
     return model

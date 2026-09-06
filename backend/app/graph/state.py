@@ -25,6 +25,7 @@ class PlannerState(PlannerInput, total=False):
     candidate: NotRequired[dict[str, Any] | None]
     candidates: list[dict[str, Any]]
     last_error: str
+    last_error_code: str
     structured_strategy: str
     model_metadata: dict[str, Any]
     trip_plan: dict[str, Any]

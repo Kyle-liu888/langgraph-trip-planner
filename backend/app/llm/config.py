@@ -22,8 +22,10 @@ class ModelConfig(BaseModel):
     api_key: SecretStr | None = None
     base_url: str | None = None
     temperature: float = Field(default=0.2, ge=0, le=2)
-    timeout: float = Field(default=90, gt=0)
-    max_retries: int = Field(default=2, ge=0, le=10)
+    timeout: float = Field(default=180, gt=0)
+    max_retries: int = Field(default=0, ge=0, le=10)
+    streaming: bool = True
+    progress_interval: float = Field(default=10, gt=0, le=60)
     structured_output_mode: StructuredOutputMode = "auto"
     thinking_mode: ThinkingMode = "auto"
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
@@ -59,6 +61,8 @@ class ModelConfig(BaseModel):
             temperature=current.llm_temperature,
             timeout=current.llm_timeout,
             max_retries=current.llm_max_retries,
+            streaming=current.llm_streaming,
+            progress_interval=current.llm_progress_interval,
             structured_output_mode=current.llm_structured_output_mode,
             thinking_mode=current.llm_thinking_mode,
             model_kwargs=current.llm_model_kwargs,

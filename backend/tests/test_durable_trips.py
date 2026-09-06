@@ -194,3 +194,63 @@ def test_one_active_job_per_user_and_shutdown_cancellation(tmp_path):
             async with runs.sessions() as session:
                 assert (await runs.owned(session, created['id'], OWNER)).status == 'interrupted'
     asyncio.run(scenario())
+
+
+def test_total_timeout_is_distinct_and_resume_reuses_saved_context(tmp_path):
+    from unittest.mock import AsyncMock
+
+    async def scenario():
+        async with system(tmp_path) as runs:
+            runtime = runs.planner.runtime
+            entered, cancelled = asyncio.Event(), asyncio.Event()
+
+            async def slow(*args, **kwargs):
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.set()
+
+            original_model = runtime.model
+            runtime.model = SimpleNamespace(ainvoke=AsyncMock(side_effect=slow))
+            runs.settings.planner_request_timeout = .15
+            created = await runs.create(OWNER, make_request(), str(uuid4()))
+            failed = await wait_run(runs, created['id'])
+            assert entered.is_set() and cancelled.is_set()
+            assert failed.error_code == 'RUN_TIMEOUT'
+            assert '整趟规划' in failed.message
+            config = {'configurable': {'thread_id': created['id']}}
+            snapshot = await runs.planner.graph.aget_state(config)
+            assert snapshot.next == ('generate_candidate',)
+            assert snapshot.values['attempt'] == 0
+            runtime.model = original_model
+            runs.settings.planner_request_timeout = 10
+            resumed = await runs.resume(created['id'], OWNER)
+            assert (await wait_run(runs, created['id'])).status == 'completed'
+            async with runs.sessions() as session:
+                events = (await session.scalars(select(TripEvent).where(TripEvent.run_id == resumed['run_id']))).all()
+                assert not any(e.payload.get('node') == 'collect_context' for e in events)
+    asyncio.run(scenario())
+
+
+def test_model_timeout_retry_reason_is_durable_and_attempts_are_bounded(tmp_path):
+    from unittest.mock import AsyncMock
+
+    async def scenario():
+        async with system(tmp_path) as runs:
+            async def slow(*args, **kwargs):
+                await asyncio.Event().wait()
+            runtime = runs.planner.runtime
+            runtime.model_config = runtime.model_config.model_copy(update={'timeout': .03, 'progress_interval': .01})
+            calls = AsyncMock(side_effect=slow)
+            runtime.model = SimpleNamespace(ainvoke=calls)
+            created = await runs.create(OWNER, make_request(), str(uuid4()))
+            result = await wait_run(runs, created['id'])
+            assert result.status == 'fallback' and '多次超时' in result.message
+            assert calls.call_count == runtime.settings.planner_max_attempts
+            async with runs.sessions() as session:
+                events = (await session.scalars(select(TripEvent).where(TripEvent.trip_id == created['id']))).all()
+                reasons = [e.payload.get('error_code') for e in events if e.payload['type'] == 'retry.scheduled']
+                assert reasons == ['MODEL_TIMEOUT']
+                assert any(e.payload['type'] == 'model.waiting' for e in events)
+    asyncio.run(scenario())

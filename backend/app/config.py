@@ -45,8 +45,10 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_base_url: str | None = None
     llm_temperature: float = Field(default=0.2, ge=0, le=2)
-    llm_timeout: float = Field(default=90, gt=0)
-    llm_max_retries: int = Field(default=2, ge=0, le=10)
+    llm_timeout: float = Field(default=180, gt=0)
+    llm_max_retries: int = Field(default=0, ge=0, le=10)
+    llm_streaming: bool = True
+    llm_progress_interval: float = Field(default=10, gt=0, le=60)
     llm_structured_output_mode: str = "auto"
     llm_thinking_mode: str = "auto"
     llm_model_kwargs: dict[str, Any] = Field(default_factory=dict)

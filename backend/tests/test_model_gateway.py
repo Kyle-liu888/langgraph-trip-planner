@@ -25,8 +25,8 @@ def test_openai_compatible_maps_to_openai_provider() -> None:
         model="custom-chat",
         model_provider="openai",
         temperature=0.2,
-        timeout=90.0,
-        max_retries=2,
+        timeout=180.0,
+        max_retries=0,
         api_key="test-key",
         base_url="https://models.example.com/v1",
     )

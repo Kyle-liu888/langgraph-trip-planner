@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import timedelta
 from uuid import uuid4
 
@@ -136,6 +137,8 @@ class RunManager:
 
     async def execute(self, trip_id: str, run_id: str, user_id: str, resume: bool):
         token = log_context.set({**log_context.get(), "trip_id": trip_id, "run_id": run_id, "user_id": user_id})
+        started = time.perf_counter()
+        deadline = None
         try:
             async with self.slots:
                 async with self.sessions() as session:
@@ -148,7 +151,12 @@ class RunManager:
                 config = {"configurable": {"thread_id": trip_id}}
                 snapshot = await self.planner.graph.aget_state(config)
                 inputs = None if resume and snapshot.values else {"request": request}
-                async with asyncio.timeout(self.settings.planner_request_timeout):
+                started = time.perf_counter()
+                logger.info("run.budget", extra={"timeout_seconds": self.settings.planner_request_timeout,
+                            "model_timeout_seconds": self.settings.llm_timeout,
+                            "model_max_attempts": self.settings.planner_max_attempts,
+                            "sdk_max_retries": self.settings.llm_max_retries})
+                async with asyncio.timeout(self.settings.planner_request_timeout) as deadline:
                     # If the graph completed just before a crash, persist its result without re-running it.
                     if not (resume and snapshot.values.get("trip_plan") and not snapshot.next):
                         async for part in self.planner.graph.astream(inputs, config=config,
@@ -165,9 +173,14 @@ class RunManager:
             await self.finish(trip_id, run_id, "interrupted", "服务已停止，可从检查点继续", "PROCESS_STOPPED")
             raise
         except Exception as exc:
-            logger.exception("run.failed", extra={"error_type": type(exc).__name__})
-            code = "RUN_TIMEOUT" if isinstance(exc, TimeoutError) else "RUN_FAILED"
-            message = "规划超时，可稍后继续" if isinstance(exc, TimeoutError) else "规划失败，请查看运行日志或稍后继续"
+            total_timeout = deadline is not None and deadline.expired()
+            logger.exception("run.failed", extra={"error_type": type(exc).__name__,
+                             "elapsed_ms": round((time.perf_counter() - started) * 1000),
+                             "timeout_seconds": self.settings.planner_request_timeout,
+                             "timeout_scope": "run" if total_timeout else "none"})
+            code = "RUN_TIMEOUT" if total_timeout else "RUN_FAILED"
+            message = (f"整趟规划达到 {self.settings.planner_request_timeout} 秒时间上限，"
+                       "当前调用已中断，可从检查点重新执行" if total_timeout else "规划失败，请查看运行日志或稍后继续")
             await self.finish(trip_id, run_id, "failed", message, code)
         finally:
             log_context.reset(token)

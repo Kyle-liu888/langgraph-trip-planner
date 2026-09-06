@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
 
 from ..llm.structured import ainvoke_structured
+from ..llm.progress import error_details
 from ..models.schemas import TripPlan, TripRequest
 from ..planner.output import (
     create_fallback_plan,
@@ -76,9 +77,13 @@ async def generate_candidate(
             "\n上一次输出未通过后端校验。请重新输出完整计划并修正此问题："
             f"{state['last_error'][:800]}"
         )
+    # Rebuild from the saved raw context so existing checkpoints also benefit
+    # from prompt compaction without repeating map requests.
+    query = build_planner_query(runtime.context.context_builder,
+                                TripRequest.model_validate(state["request"]), state["planner_context"])
     messages = [
         SystemMessage(content=PLANNER_AGENT_PROMPT),
-        HumanMessage(content=state["planner_query"] + correction),
+        HumanMessage(content=query + correction),
     ]
 
     invocation_kwargs: dict[str, Any] = {
@@ -101,10 +106,12 @@ async def generate_candidate(
             invocation_kwargs=invocation_kwargs,
         )
     except Exception as exc:
+        details = error_details(exc)
         return {
             "attempt": attempt,
             "candidate": None,
-            "last_error": redact(f"模型调用或解析失败: {exc}"),
+            "last_error": details["label"],
+            "last_error_code": details["error_code"],
             "generation_status": "generation_failed",
             "generation_message": f"第 {attempt} 次模型生成失败",
         }
@@ -123,6 +130,7 @@ async def generate_candidate(
         "structured_strategy": result.strategy,
         "model_metadata": metadata,
         "last_error": "",
+        "last_error_code": "",
         "generation_status": "candidate_generated",
         "generation_message": f"第 {attempt} 个候选计划已生成",
     }
@@ -168,7 +176,9 @@ def route_after_validation(
     if state.get("attempt", 0) >= settings.planner_max_attempts:
         return "select" if state.get("candidates") else "fallback"
     emit_progress("retry.scheduled", attempt=state.get("attempt", 0) + 1,
-                  max_attempts=settings.planner_max_attempts)
+                  max_attempts=settings.planner_max_attempts,
+                  error_code=state.get("last_error_code", ""),
+                  label=state.get("last_error", "")[:160] or "生成下一个候选")
     return "retry"
 
 
@@ -198,5 +208,7 @@ def create_fallback(state: PlannerState) -> dict[str, Any]:
     return {
         "trip_plan": create_fallback_plan(TripRequest.model_validate(state["request"])).model_dump(mode="json"),
         "generation_status": "fallback_success",
-        "generation_message": "模型生成未通过校验，已返回确定性兜底计划；这不是模型生成的完整结果。",
+        "generation_message": ("模型请求多次超时，已返回基础兜底计划；这不是模型生成的完整结果。"
+                               if state.get("last_error_code") == "MODEL_TIMEOUT" else
+                               "模型生成失败或未通过校验，已返回基础兜底计划；这不是模型生成的完整结果。"),
     }
