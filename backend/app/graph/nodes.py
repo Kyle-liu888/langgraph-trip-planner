@@ -92,9 +92,9 @@ async def generate_candidate(
     }
     if (
         runtime.context.model_config.provider == "deepseek"
-        and runtime.context.model_config.thinking_mode == "disabled"
+        and runtime.context.model_config.thinking_mode != "auto"
     ):
-        invocation_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        invocation_kwargs["extra_body"] = {"thinking": {"type": runtime.context.model_config.thinking_mode}}
 
     try:
         result = await ainvoke_structured(
@@ -145,10 +145,14 @@ def validate_candidate(state: PlannerState) -> dict[str, Any]:
         enrich_trip_plan_poi_details(candidate, state["planner_context"])
         validate_trip_plan_shape(candidate, TripRequest.model_validate(state["request"]), state["planner_context"])
     except Exception as exc:
-        emit_progress("validation.failed", error_type=type(exc).__name__, attempt=state["attempt"])
+        code = getattr(exc, "code", "PLAN_VALIDATION_FAILED")
+        label = "模型返回的目的地与所选城市不一致" if code == "DESTINATION_MISMATCH" else "行程内容未满足校验规则，准备修正"
+        emit_progress("validation.failed", error_type=type(exc).__name__, attempt=state["attempt"],
+                      error_code=code, label=label)
         return {
             "candidate": None,
             "last_error": redact(str(exc)),
+            "last_error_code": code,
             "generation_status": "validation_failed",
             "generation_message": f"第 {state['attempt']} 个候选未通过校验",
         }
@@ -208,7 +212,9 @@ def create_fallback(state: PlannerState) -> dict[str, Any]:
     return {
         "trip_plan": create_fallback_plan(TripRequest.model_validate(state["request"])).model_dump(mode="json"),
         "generation_status": "fallback_success",
-        "generation_message": ("模型请求多次超时，已返回基础兜底计划；这不是模型生成的完整结果。"
+        "generation_message": ("模型返回的目的地与所选城市不一致，已返回基础兜底计划；请确认填写的是具体城市。"
+                               if state.get("last_error_code") == "DESTINATION_MISMATCH" else
+                               "模型请求多次超时，已返回基础兜底计划；这不是模型生成的完整结果。"
                                if state.get("last_error_code") == "MODEL_TIMEOUT" else
                                "模型生成失败或未通过校验，已返回基础兜底计划；这不是模型生成的完整结果。"),
     }

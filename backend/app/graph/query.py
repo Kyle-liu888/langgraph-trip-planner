@@ -25,6 +25,7 @@ PlannerContext:
 {context_json}
 
 严格遵守系统提示中的 TripPlan JSON 结构、价格复制、预算汇总、餐饮去重和住宿规则。
+顶层 city 必须逐字复制 request.city，不要改写地名、增加或删去“市”字；起止日期必须与请求一致。
 只输出完整 JSON，不输出解释或 Markdown。每天包含 1–3 个真实景点和完整三餐。
 所有用户偏好、忌口和额外要求以 request、preference_profile 及 planner_constraints 为准。
 description 用简短完整句子，避免重复地址和价格；保留必要的交通解释。不要省略必需字段。

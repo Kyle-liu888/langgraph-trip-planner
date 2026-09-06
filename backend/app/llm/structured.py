@@ -80,6 +80,7 @@ async def ainvoke_structured(
         started = time.perf_counter()
         fields = {"provider": model_config.provider, "model": model_config.model, "strategy": method}
         emit_progress("model.started", **fields, timeout_seconds=model_config.timeout,
+                      thinking_mode=model_config.thinking_mode,
                       sdk_max_retries=model_config.max_retries,
                       input_chars=sum(len(str(message.content)) for message in messages),
                       max_output_tokens=kwargs.get("max_tokens"))
@@ -96,8 +97,11 @@ async def ainvoke_structured(
                 schema,
                 method=method,
                 include_raw=True,
+                # Bind at construction: include_raw introduces a RunnableMap
+                # whose nested chat model does not inherit ainvoke **kwargs.
+                **kwargs,
             )
-            result = await invoke_with_progress(runnable, messages, kwargs, model_config, fields)
+            result = await invoke_with_progress(runnable, messages, {}, model_config, fields)
             emit_progress("model.completed", **fields,
                           elapsed_ms=round((time.perf_counter() - started) * 1000),
                           usage=getattr(result.get("raw"), "usage_metadata", None))

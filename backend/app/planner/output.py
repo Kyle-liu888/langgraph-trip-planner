@@ -269,6 +269,12 @@ def extract_json_object(response: str) -> Dict[str, Any]:
     raise ValueError("响应中未找到完整的顶层TripPlan JSON对象")
 
 
+class PlanValidationError(ValueError):
+    def __init__(self, code: str, message: str):
+        self.code = code
+        super().__init__(message)
+
+
 def validate_trip_plan_shape(
     trip_plan: TripPlan,
     request: TripRequest,
@@ -276,7 +282,7 @@ def validate_trip_plan_shape(
 ) -> None:
     """Validate high-level shape beyond Pydantic field types."""
     if trip_plan.city != request.city:
-        raise ValueError(f"city不匹配: expected={request.city}, got={trip_plan.city}")
+        raise PlanValidationError("DESTINATION_MISMATCH", f"city不匹配: expected={request.city}, got={trip_plan.city}")
     if trip_plan.start_date != request.start_date or trip_plan.end_date != request.end_date:
         raise ValueError("start_date/end_date与请求不匹配")
     if len(trip_plan.days) != request.travel_days:

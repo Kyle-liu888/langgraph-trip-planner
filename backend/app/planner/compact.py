@@ -74,6 +74,7 @@ def compact_pois(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "name": item.get("name", ""),
             "type": compact_type(item.get("type", "")),
             "district": item.get("adname", ""),
+            "city": item.get("cityname", ""),
             "address": short_text(item.get("address", ""), 48),
             "location": item.get("location"),
             "rating": item.get("rating", ""),

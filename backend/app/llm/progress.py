@@ -43,20 +43,41 @@ class ModelProgress(AsyncCallbackHandler):
     def __init__(self, fields: dict, started: float):
         self.fields, self.started = fields, started
         self.chunks = self.characters = 0
+        self.reasoning_seen = False
         self.last_report = 0.0
+
+    def status(self):
+        if self.characters:
+            return "answer", f"正在生成行程正文，已收到 {self.characters} 字符"
+        if self.reasoning_seen:
+            return "reasoning", "模型正在推理，尚未开始输出行程正文"
+        return "waiting", "已连接模型，等待行程正文" if self.chunks else "请求仍在等待模型响应"
 
     async def on_llm_new_token(self, token, *, chunk=None, **kwargs):
         self.chunks += 1
         # Count only final-answer text. Never emit content, tool arguments or reasoning.
-        content = getattr(getattr(chunk, "message", None), "content", "")
+        message = getattr(chunk, "message", None)
+        content = getattr(message, "content", "")
+        if (getattr(message, "additional_kwargs", {}) or {}).get("reasoning_content"):
+            self.reasoning_seen = True
         if isinstance(content, str):
             self.characters += len(content)
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, str):
+                    self.characters += len(block)
+                elif isinstance(block, dict):
+                    if block.get("type") in ("text", "output_text"):
+                        self.characters += len(block.get("text") or "")
+                    elif block.get("type") in ("reasoning", "thinking"):
+                        self.reasoning_seen = True
         now = time.perf_counter()
         if self.chunks == 1 or now - self.last_report >= 2:
             self.last_report = now
+            phase, label = self.status()
             emit_progress("model.progress", **self.fields, response_chunks=self.chunks,
                           output_chars=self.characters, elapsed_ms=round((now - self.started) * 1000),
-                          label=f"正在接收模型响应，已收到 {self.characters} 字符行程正文")
+                          phase=phase, label=label)
 
 
 async def invoke_with_progress(runnable, messages, kwargs, config, fields):
@@ -69,11 +90,12 @@ async def invoke_with_progress(runnable, messages, kwargs, config, fields):
                 done, _ = await asyncio.wait({task}, timeout=config.progress_interval)
                 if done:
                     return task.result()
+                phase, label = callback.status()
                 emit_progress("model.waiting", **fields,
                               elapsed_ms=round((time.perf_counter() - started) * 1000),
                               response_chunks=callback.chunks, output_chars=callback.characters,
                               timeout_seconds=config.timeout,
-                              label="仍在等待完整行程" if callback.chunks else "请求仍在等待模型响应")
+                              phase=phase, label=label)
     except TimeoutError as exc:
         raise ModelRequestTimeout("模型调用超过时间预算") from exc
     finally:

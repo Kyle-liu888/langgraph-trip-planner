@@ -5,12 +5,13 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
+from langchain_core.outputs import ChatGenerationChunk
 from langchain_deepseek import ChatDeepSeek
 from pydantic import BaseModel
 
 from app.llm.config import ModelConfig
-from app.llm.progress import ModelRequestTimeout, error_details
+from app.llm.progress import ModelProgress, ModelRequestTimeout, error_details
 from app.llm.structured import ainvoke_structured
 
 
@@ -119,4 +120,51 @@ def test_non_streaming_provider_still_completes_with_waiting_feedback():
             result = await invoke(Delayed(), ModelConfig(provider="custom", model="custom", progress_interval=.01))
             assert result.parsed.answer == "ok"
             assert any(call.args[0] == "model.waiting" for call in progress.call_args_list)
+    asyncio.run(scenario())
+
+
+def test_reasoning_is_distinguished_from_answer_without_exposing_content():
+    async def scenario():
+        import time
+        callback = ModelProgress({}, time.perf_counter())
+        with patch('app.llm.progress.emit_progress') as progress:
+            await callback.on_llm_new_token('', chunk=ChatGenerationChunk(message=AIMessageChunk(
+                content='', additional_kwargs={'reasoning_content': 'private reasoning'})))
+            assert callback.status() == ('reasoning', '模型正在推理，尚未开始输出行程正文')
+            assert callback.characters == 0
+            assert progress.call_args.kwargs['phase'] == 'reasoning'
+            callback.last_report = 0
+            await callback.on_llm_new_token('', chunk=ChatGenerationChunk(message=AIMessageChunk(
+                content=[{'type': 'text', 'text': '答案'}, {'type': 'thinking', 'thinking': 'private thinking'}])))
+            assert callback.characters == 2 and callback.status()[0] == 'answer'
+            assert 'private' not in str(progress.call_args_list)
+    asyncio.run(scenario())
+
+
+def test_planning_node_sends_explicit_disabled_thinking_to_deepseek():
+    from app.graph import build_planner_graph
+    from test_planner_graph import make_runtime, make_request, valid_plan_json
+
+    async def scenario():
+        requests = []
+        def respond(request):
+            body = json.loads(request.content)
+            requests.append(body)
+            assert body['thinking'] == {'type': 'disabled'}
+            assert body['stream'] is True
+            assert body.get('max_tokens', body.get('max_completion_tokens')) == 4800
+            assert body['temperature'] == .2
+            data = {'id': 'mock', 'object': 'chat.completion.chunk', 'created': 0, 'model': 'mock',
+                    'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': valid_plan_json()}, 'finish_reason': 'stop'}]}
+            return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+                                  content='data: ' + json.dumps(data) + '\n\ndata: [DONE]\n\n')
+        async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+            runtime = make_runtime([valid_plan_json()])
+            runtime.model = ChatDeepSeek(model='mock', api_key='test-only', streaming=True,
+                                        max_retries=0, http_async_client=client)
+            runtime.model_config = ModelConfig(provider='deepseek', model='mock', thinking_mode='disabled')
+            with patch('app.llm.structured.emit_progress') as diagnostic:
+                result = await build_planner_graph().ainvoke({'request': make_request()}, context=runtime)
+                assert result['generation_status'] == 'llm_success', diagnostic.call_args_list
+            assert len(requests) == 1
     asyncio.run(scenario())

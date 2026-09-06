@@ -54,13 +54,13 @@
 
             <a-row :gutter="[20, 16]">
               <a-col :xs="{ span: 24 }" :lg="{ span: 10 }">
-                <a-form-item name="city" :rules="[{ required: true, message: '请输入目的地城市' }]">
+                <a-form-item name="city" :rules="[{ required: true, validator: validateCity }]" extra="当前支持单个城市，请勿只填写云南、四川等省份">
                   <template #label>
                     <span class="form-label">目的地城市</span>
                   </template>
                   <a-input
                     v-model:value="formData.city"
-                    placeholder="例如: 北京"
+                    placeholder="例如：北京、昆明、丽江（选择一个）"
                     size="large"
                     class="custom-input"
                   />
@@ -305,6 +305,7 @@ import {
 import { createTrip } from '@/services/trips'
 import { useTrips } from '@/stores/trips'
 import api from '@/services/api'
+import { validateCity } from '@/services/destination'
 import type { TripFormData } from '@/types'
 import type { Dayjs } from 'dayjs'
 
@@ -463,7 +464,7 @@ const handleSubmit = async () => {
     const budgetAmount = formData.budget_constraint.amount
     const budgetStrictness = budgetAmount === null || budgetAmount === undefined ? 'none' : 'soft'
     const requestData: TripFormData = {
-      city: formData.city,
+      city: formData.city.trim(),
       start_date: formData.start_date.format('YYYY-MM-DD'),
       end_date: formData.end_date.format('YYYY-MM-DD'),
       travel_days: formData.travel_days,

@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, select, update
 
 from ..database import DailyUsage, Trip, TripEvent, TripRun, now, serialize_trip
 from ..models.schemas import TripPlan, TripRequest
+from ..planner.destination import city_input_error
 from ..observability import log_context, logger, redact
 
 
@@ -76,6 +77,9 @@ class RunManager:
         task.add_done_callback(done)
 
     async def create(self, user_id: str, request: TripRequest, key: str) -> dict:
+        if message := city_input_error(request.city):
+            raise problem(422, "DESTINATION_REQUIRES_CITY", message)
+        request = request.model_copy(update={"city": request.city.strip()})
         async with self.mutations, self.sessions() as session:
             existing = await session.scalar(select(Trip).where(Trip.user_id == user_id, Trip.idempotency_key == key))
             body = request.model_dump(mode="json")
@@ -118,6 +122,8 @@ class RunManager:
             trip = await self.owned(session, trip_id, user_id)
             if trip.status not in {"failed", "interrupted"}:
                 raise problem(409, "NOT_RESUMABLE", "只有失败或中断的行程可以继续")
+            if message := city_input_error(trip.request.get("city", "")):
+                raise problem(422, "DESTINATION_REQUIRES_CITY", message + "；请新建行程填写城市")
             if trip.resume_count >= self.settings.max_resume_attempts:
                 raise problem(429, "RESUME_LIMIT", "此行程已达到恢复次数上限，请检查配置后新建行程")
             if trip.graph_version != 1:
