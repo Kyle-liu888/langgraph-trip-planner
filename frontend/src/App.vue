@@ -3,7 +3,7 @@
   <div class="app-shell">
     <a href="#main-content" class="skip-link">跳到主要内容</a>
     <div v-if="auth.user" class="desktop-sidebar"><HistorySidebar /></div>
-    <a-drawer v-model:open="menuOpen" placement="left" :width="280" :body-style="{ padding: 0 }" title="旅行工作区">
+    <a-drawer v-if="auth.user" v-model:open="menuOpen" placement="left" :width="280" :body-style="{ padding: 0 }" title="旅行工作区">
       <HistorySidebar v-if="auth.user" @navigate="menuOpen = false" />
     </a-drawer>
     <a-layout :class="['app-layout', { 'with-sidebar': auth.user }]">
@@ -39,7 +39,10 @@ import { useAuth } from './stores/auth'
 import { useTrips } from './stores/trips'
 const auth = useAuth(), trips = useTrips(), route = useRoute(), router = useRouter()
 const menuOpen = ref(false)
+watch(() => route.fullPath, () => { menuOpen.value = false })
 watch(() => auth.user?.id, id => {
+  // Auth changes can unmount the sidebar before its navigation event is emitted.
+  menuOpen.value = false
   trips.reset()
   if (id) void trips.load()
   else if (route.path.startsWith('/trips/')) void router.replace('/login')

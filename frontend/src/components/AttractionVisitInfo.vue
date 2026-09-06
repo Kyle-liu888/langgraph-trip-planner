@@ -36,9 +36,10 @@
     <div class="link-row">
       <button type="button" @click="copyKeyword">复制搜索词</button>
       <a href="https://www.xiaohongshu.com/" target="_blank" rel="noopener noreferrer">小红书官网</a>
+      <a href="https://m.dianping.com/dphome" target="_blank" rel="noopener noreferrer">大众点评移动官网</a>
     </div>
     <p class="search-keyword">搜索词：{{ guides.keyword }}</p>
-    <p class="hint">大众点评入口打开官网，不会自动搜索。可先复制搜索词，进入官网或 App 后粘贴查询。</p>
+    <p class="hint">大众点评入口打开官网，不会自动搜索。可先复制搜索词，进入官网或 App 后粘贴查询。电脑官网加载异常时，可试试移动官网。</p>
     <p v-if="copyMessage" role="status">{{ copyMessage }}</p>
     <p class="hint">搜索结果未经过本项目审核；第三方平台可能需要登录或验证码。若入口失效，可复制搜索词到平台官网查询。</p>
     </section>

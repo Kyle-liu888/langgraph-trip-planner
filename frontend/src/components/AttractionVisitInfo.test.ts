@@ -24,6 +24,7 @@ it('labels zero as a budget estimate and keeps guides during failure', () => {
   expect(root.textContent).toContain('不会自动搜索')
   expect(root.textContent).not.toContain('站外搜索')
   expect(root.querySelectorAll('a[href="https://www.dianping.com/"]')).toHaveLength(1)
+  expect(root.querySelectorAll('a[href="https://m.dianping.com/dphome"]')).toHaveLength(1)
   expect(root.querySelector('a[href*="baidu.com"]')).toBeNull()
   expect(root.textContent).toContain('本次规划未自动校验闭馆日期')
   for (const link of root.querySelectorAll('a')) {
