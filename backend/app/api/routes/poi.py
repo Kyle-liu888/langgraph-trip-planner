@@ -3,6 +3,8 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
+from datetime import date
+from ...services.visit_info_service import get_visit_info_service
 from ...config import get_settings
 from ...observability import logger
 from ...planner.amap import AmapPlannerClient
@@ -11,6 +13,20 @@ from ...services.poi_photo_service import get_poi_photo_service
 
 router = APIRouter(prefix="/poi", tags=["POI"])
 SEARCH_SOURCE_ROLES = {"food", "scenic", "hotel"}
+
+
+@router.get("/visit-info", summary="景点开放时间与官方来源（非实时票务）")
+def get_visit_info(
+    name: str = Query(min_length=1, max_length=120),
+    city: str = Query(min_length=1, max_length=80),
+    poi_id: str = Query(default="", max_length=40, pattern=r"^[A-Za-z0-9_-]*$"),
+    longitude: float | None = Query(default=None, ge=-180, le=180),
+    latitude: float | None = Query(default=None, ge=-90, le=90),
+    visit_date: date | None = None,
+):
+    if (longitude is None) != (latitude is None):
+        raise HTTPException(422, {"code": "INVALID_LOCATION", "message": "经纬度须同时提供"})
+    return {"success": True, "data": get_visit_info_service().resolve(name, city, poi_id, longitude, latitude, visit_date)}
 
 
 class POIDetailResponse(BaseModel):

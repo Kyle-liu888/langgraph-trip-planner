@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "city": "北京",
+      "names": [
+        "故宫博物院",
+        "故宫"
+      ],
+      "poi_ids": [
+        "B000A8UIN8"
+      ],
+      "source_name": "故宫博物院官网",
+      "verified_at": "2026-09-06",
+      "reservation_note": "请按官网说明通过“故宫博物院”小程序预约。",
+      "links": [
+        {
+          "purpose": "reservation",
+          "label": "官方预约说明",
+          "url": "https://www.dpm.org.cn/subject_booking/"
+        },
+        {
+          "purpose": "price",
+          "label": "官方票价政策",
+          "url": "https://www.dpm.org.cn/subject_booking/"
+        }
+      ]
+    },
+    {
+      "city": "北京",
+      "names": [
+        "颐和园"
+      ],
+      "poi_ids": ["B000A7O1CU"],
+      "source_name": "颐和园官网",
+      "verified_at": "2026-09-06",
+      "reservation_note": "请从官网查看在线订票及最新参观要求。",
+      "links": [
+        {
+          "purpose": "reservation",
+          "label": "官方参观与预约入口",
+          "url": "https://summerpalace.net.cn/index.html"
+        },
+        {
+          "purpose": "price",
+          "label": "官方票务信息",
+          "url": "https://summerpalace.net.cn/index.html"
+        }
+      ]
+    },
+    {
+      "city": "北京",
+      "names": [
+        "天坛公园",
+        "天坛"
+      ],
+      "poi_ids": ["B000A81CB2"],
+      "source_name": "天坛公园官网",
+      "verified_at": "2026-09-06",
+      "reservation_note": "请从官网线上购票入口查看购票渠道；公园与园内景点开放安排可能不同。",
+      "links": [
+        {
+          "purpose": "reservation",
+          "label": "官方参观与购票入口",
+          "url": "https://www.tiantanpark.cn/index.html"
+        }
+      ]
+    }
+  ]
+}
