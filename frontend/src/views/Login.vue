@@ -6,24 +6,38 @@
       <p>登录后创建行程、查看实时规划进度，随时回来继续。</p>
       <a-alert v-if="auth.error" type="warning" show-icon :message="auth.error" />
         <a-alert v-if="notice" :type="noticeType" :message="notice" show-icon class="notice" />
-        <a-form layout="vertical" @finish="submit">
-          <a-form-item label="邮箱"><a-input v-model:value="email" type="email" autocomplete="email" required /></a-form-item>
-          <a-form-item label="密码"><a-input-password v-model:value="password" :autocomplete="register ? 'new-password' : 'current-password'" :minlength="8" required /></a-form-item>
+        <a-form :model="credentials" layout="vertical" @finish="submit" @finish-failed="validationFailed" novalidate>
+          <a-form-item label="邮箱" name="email" :rules="emailRules"><a-input v-model:value="credentials.email" type="email" autocomplete="email" /></a-form-item>
+          <a-form-item label="密码" name="password" :rules="passwordRules"><a-input-password v-model:value="credentials.password" :autocomplete="register ? 'new-password' : 'current-password'" /></a-form-item>
           <a-button type="primary" html-type="submit" block :loading="busy">{{ register ? '注册账号' : '登录' }}</a-button>
         </a-form>
-        <a-button type="link" block @click="register = !register">{{ register ? '已有账号？去登录' : '还没有账号？注册' }}</a-button>
+        <a-button type="link" block :disabled="busy" @click="register = !register; notice = ''">{{ register ? '已有账号？去登录' : '还没有账号？注册' }}</a-button>
         <p class="login-note">账号和行程保存在你的本地数据库。邮箱仅作为登录标识，不发送验证邮件。密码为 8–128 个字符。</p>
     </a-card>
   </main>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
+import type { Rule } from 'ant-design-vue/es/form'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuth } from '@/stores/auth'
 const auth = useAuth(), router = useRouter(), route = useRoute()
-const email = ref(''), password = ref(''), register = ref(false), busy = ref(false), notice = ref('')
+const credentials = reactive({ email: '', password: '' })
+const register = ref(false), busy = ref(false), notice = ref('')
+const emailRules: Rule[] = [
+  { required: true, message: '请输入邮箱' },
+  { type: 'email', transform: value => value.trim(), message: '请输入有效的邮箱地址' }
+]
+const passwordRules: Rule[] = [
+  { required: true, message: '请输入密码' },
+  { min: 8, max: 128, message: '密码需要 8–128 个字符' }
+]
 const noticeType = ref<'error' | 'success'>('error')
+function validationFailed() {
+  noticeType.value = 'error'
+  notice.value = '请检查邮箱和密码，修正下方提示后重试'
+}
 function destination() {
   const value = route.query.redirect
   return typeof value === 'string' && /^\/trips\/(new|[a-f0-9-]+)$/.test(value) ? value : '/trips/new'
@@ -33,11 +47,11 @@ onMounted(async () => {
   if (auth.user) await router.replace(destination())
 })
 async function submit() {
+  if (busy.value) return
   busy.value = true; notice.value = ''; noticeType.value = 'error'
   try {
-    const credentials = { email: email.value.trim(), password: password.value }
-    await auth.authenticate(credentials, register.value)
-    password.value = ''
+    await auth.authenticate({ email: credentials.email.trim(), password: credentials.password }, register.value)
+    credentials.password = ''
     await router.replace(destination())
   } catch (e) { notice.value = (e as Error).message }
   finally { busy.value = false }
