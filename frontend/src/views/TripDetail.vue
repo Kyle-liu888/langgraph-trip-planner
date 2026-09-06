@@ -13,6 +13,7 @@
           <div class="current-node" aria-live="polite"><a-spin v-if="active(trip)" />
             <div><h2>{{ active(trip) ? nodeLabels[trip.current_node || ''] || '等待开始规划' : trip.message }}</h2>
               <p>{{ connection }}<span v-if="active(trip)"> · 本次页面观察 {{ elapsed }} 秒</span></p>
+              <p v-if="active(trip) && latestModelEvent" role="status">{{ eventText(latestModelEvent) }}<span v-if="latestModelEvent.elapsed_ms != null"> · 已用 {{ (latestModelEvent.elapsed_ms / 1000).toFixed(0) }} 秒</span></p>
             </div>
           </div>
           <p class="help">这里显示真实节点与模型调用状态，不是模型的内部思考内容。离开或刷新页面不会取消后台任务。</p>
@@ -38,23 +39,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Result from './Result.vue'
 import { getTrip, resumeTrip, active, nodeLabels, statusLabels, type TripRecord, type ProgressEvent } from '@/services/trips'
 import { appendEvent, subscribeProgress } from '@/services/progress'
+import { eventText } from '@/services/progressText'
 import { useTrips } from '@/stores/trips'
 const route = useRoute(), trips = useTrips(), id = String(route.params.id)
 const trip = ref<TripRecord | null>(null), events = ref<ProgressEvent[]>([])
 const loading = ref(true), resuming = ref(false), error = ref(''), connection = ref('正在连接进度服务…'), elapsed = ref(0)
 let controller = new AbortController(), disposed = false
 const timer = setInterval(() => { if (trip.value && active(trip.value)) elapsed.value++ }, 1000)
-function eventText(event: ProgressEvent) {
-  const names: Record<string, string> = { 'node.started': '开始', 'node.completed': '完成', 'node.failed': '节点失败',
-    'model.started': '正在调用模型', 'model.completed': '模型返回', 'model.failed': '模型调用或解析失败',
-    'validation.failed': '候选校验未通过', 'retry.scheduled': '准备生成下一个候选' }
-  return [names[event.type] || event.type, event.label || nodeLabels[event.node || ''] || '', event.model || '', event.error_type || ''].filter(Boolean).join(' · ')
-}
+const latestModelEvent = computed(() => trip.value?.current_node === 'generate_candidate'
+  ? [...events.value].reverse().find(event => event.run_id === trip.value?.run_id &&
+      (event.type.startsWith('model.') || event.type === 'retry.scheduled'))
+  : undefined)
 async function refresh() {
   const record = await getTrip(id)
   if (disposed) return

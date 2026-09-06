@@ -3,6 +3,11 @@ import os
 from pathlib import Path
 import signal
 import time
+import argparse
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--only', choices=('backend', 'frontend', 'all'), default='all')
+options = parser.parse_args()
 
 if not Path('/.dockerenv').exists() or not Path('/workspace/backend/run.py').is_file():
     raise SystemExit('Run this only inside the travel development container.')
@@ -19,7 +24,7 @@ for path in Path('/proc').iterdir():
                    and len(args) > 1 and Path(args[1]).name == 'run.py')
         frontend = (cwd == Path('/workspace/frontend') and executable == 'node'
                     and any(Path(arg).name in ('vite', 'vite.js') for arg in args[1:] if arg))
-        if backend or frontend:
+        if (backend and options.only in ('backend', 'all')) or (frontend and options.only in ('frontend', 'all')):
             pid = int(path.name)
             os.kill(pid, signal.SIGTERM)
             targets.append((pid, path.joinpath('stat').read_text().split()[21]))
@@ -41,4 +46,4 @@ while targets and time.monotonic() < deadline:
         time.sleep(0.2)
 if targets:
     raise SystemExit('Services did not finish graceful shutdown; container left running for inspection.')
-print('Backend/Vite stopped gracefully; unrelated processes were not signalled.')
+print(f'Selected services ({options.only}) stopped gracefully; unrelated processes were not signalled.')
