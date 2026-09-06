@@ -1,0 +1,30 @@
+:root {
+  --color-paper: #f7f9f6;
+  --color-surface: #ffffff;
+  --color-ink: #203c38;
+  --color-muted: #5f726d;
+  --color-line: #dce5df;
+  --color-primary: #176b5b;
+  --color-accent: #c7df9b;
+  --font-body: 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --font-display: 'STKaiti', 'KaiTi', 'Noto Serif CJK SC', serif;
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  background: var(--color-paper);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+body { margin: 0; min-width: 320px; }
+*, *::before, *::after { box-sizing: border-box; }
+a { color: var(--color-primary); }
+button, input, textarea, select { font: inherit; }
+::selection { background: #d9edc8; color: #203c38; }
+:focus-visible { outline: 3px solid #538a76; outline-offset: 4px; }
+.ant-btn { font-weight: 600; }
+.ant-btn-primary { box-shadow: none; }
+.ant-alert { line-height: 1.65; }
+.ant-form-item-extra { margin-top: 6px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
