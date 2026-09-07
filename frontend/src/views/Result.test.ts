@@ -4,8 +4,9 @@ import { createApp, nextTick, type App } from 'vue'
 import Antd from 'ant-design-vue'
 import Result from './Result.vue'
 import type { TripRecord } from '@/services/trips'
+import { merchantKey, unavailableMerchant, type MerchantStop } from '@/services/merchantInfo'
 
-const mocks = vi.hoisted(() => ({ scroll: vi.fn(), save: vi.fn(), loadPhotos: vi.fn(), loadVisits: vi.fn() }))
+const mocks = vi.hoisted(() => ({ scroll: vi.fn(), save: vi.fn(), loadPhotos: vi.fn(), loadVisits: vi.fn(), loadMerchants: vi.fn() }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('@/stores/trips', () => ({ useTrips: () => ({ upsert: vi.fn() }) }))
 vi.mock('@/services/trips', async importOriginal => ({
@@ -16,6 +17,9 @@ vi.mock('@/services/photos', async importOriginal => ({
 }))
 vi.mock('@/services/visitInfo', async importOriginal => ({
   ...await importOriginal<typeof import('@/services/visitInfo')>(), loadVisitInfos: mocks.loadVisits,
+}))
+vi.mock('@/services/merchantInfo', async importOriginal => ({
+  ...await importOriginal<typeof import('@/services/merchantInfo')>(), loadMerchantInfos: mocks.loadMerchants,
 }))
 vi.mock('@amap/amap-jsapi-loader', () => ({ default: { load: () => new Promise(() => {}) } }))
 
@@ -42,6 +46,7 @@ describe('itinerary navigation and presentation', () => {
     Element.prototype.scrollIntoView = mocks.scroll
     mocks.loadPhotos.mockResolvedValue(undefined)
     mocks.loadVisits.mockResolvedValue(undefined)
+    mocks.loadMerchants.mockResolvedValue(undefined)
     root = document.createElement('div'); document.body.append(root)
     app = createApp(Result, { record }).use(Antd); app.mount(root)
     await vi.waitFor(() => expect(root.querySelector('nav')).not.toBeNull())
@@ -98,5 +103,38 @@ describe('itinerary navigation and presentation', () => {
     await nextTick()
     expect(root.querySelector('.attraction-edit')).toBeNull()
     expect(mocks.save).not.toHaveBeenCalled()
+  })
+
+  it('loads only expanded-day merchants and supplements maps without writing source facts into saved history', async () => {
+    app.unmount()
+    const populated = JSON.parse(JSON.stringify(record)) as TripRecord
+    const hotel = { name: '庭院酒店(王府井店)', address: '王府井大街1号', type: '酒店', price_range: '约300元',
+      estimated_cost: 300, distance: '步行可达', rating: '9.9' }
+    populated.plan!.days[0].hotel = hotel
+    populated.plan!.days[1].hotel = { ...hotel }
+    populated.plan!.days[0].meals = [{ type: 'lunch', name: '烤鸭馆(王府井店)', address: '王府井大街2号', estimated_cost: 0 }]
+    populated.plan!.days[1].meals = [{ type: 'dinner', name: '面馆(前门店)', address: '前门大街3号' }]
+    const original = JSON.stringify(populated.plan)
+    mocks.loadMerchants.mockClear()
+    mocks.loadMerchants.mockImplementation(async (city, stops: MerchantStop[], update) => {
+      for (const stop of stops) update(merchantKey(city, stop), { ...unavailableMerchant(''), match_status: 'matched', data_status: 'available',
+        place: { poi_id: 'B1', name: stop.merchant.name, city, address: '来源新地址', location: { longitude: 116.4, latitude: 39.9 } },
+        source: { name: '高德地图', url: 'https://uri.amap.com/marker?poiid=B1', queried_at: '2026-09-07T12:00:00+08:00' }, rating: '4.7',
+      })
+    })
+    app = createApp(Result, { record: populated }).use(Antd); app.mount(root)
+    await vi.waitFor(() => expect(root.textContent).toContain('高德参考评分4.7'))
+    expect(mocks.loadMerchants.mock.calls[0][1].map((stop: MerchantStop) => stop.merchant.name)).toEqual([hotel.name, '烤鸭馆(王府井店)'])
+    expect(root.textContent).not.toContain('9.9')
+    expect(root.querySelector('.daily-map-count')?.textContent).toContain('2 个地点')
+    expect(JSON.stringify(populated.plan)).toBe(original)
+    const dayButton = Array.from(root.querySelectorAll('nav button')).find(button => button.textContent?.includes('第 2 天')) as HTMLButtonElement
+    dayButton.click(); await nextTick()
+    await vi.waitFor(() => expect(mocks.loadMerchants.mock.calls.at(-1)![1].map((stop: MerchantStop) => stop.merchant.name)).toEqual([hotel.name, '面馆(前门店)']))
+    mocks.save.mockResolvedValue({ ...populated, revision: 2 })
+    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('编辑行程'))!.click(); await nextTick()
+    Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('保存修改'))!.click()
+    await vi.waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    expect(JSON.stringify(mocks.save.mock.calls[0][1])).toBe(original)
   })
 })

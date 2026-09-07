@@ -81,11 +81,11 @@
                   <div class="budget-value">¥{{ tripPlan.budget.total_attractions }}</div>
                 </div>
                 <div class="budget-item">
-                  <div class="budget-label">酒店住宿</div>
+                  <div class="budget-label">酒店住宿（估算）</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_hotels }}</div>
                 </div>
                 <div class="budget-item">
-                  <div class="budget-label">餐饮费用</div>
+                  <div class="budget-label">餐饮费用（估算）</div>
                   <div class="budget-value">¥{{ tripPlan.budget.total_meals }}</div>
                 </div>
                 <div class="budget-item">
@@ -264,31 +264,20 @@
 
               <!-- 酒店推荐 -->
               <a-divider v-if="day.hotel" orientation="left">住宿推荐</a-divider>
-              <a-card v-if="day.hotel" size="small" class="hotel-card">
-                <template #title>
-                  <span class="hotel-title">{{ day.hotel.name }}</span>
-                </template>
-                <a-descriptions :column="2" size="small">
-                  <a-descriptions-item label="地址">{{ day.hotel.address }}</a-descriptions-item>
-                  <a-descriptions-item label="类型">{{ day.hotel.type }}</a-descriptions-item>
-                  <a-descriptions-item label="价格范围">{{ day.hotel.price_range }}</a-descriptions-item>
-                  <a-descriptions-item label="评分">{{ day.hotel.rating }}⭐</a-descriptions-item>
-                  <a-descriptions-item label="距离" :span="2">{{ day.hotel.distance }}</a-descriptions-item>
-                </a-descriptions>
-              </a-card>
+              <MerchantCard v-if="day.hotel" class="hotel-card"
+                :city="tripPlan.city" kind="hotel" :merchant="day.hotel"
+                :estimated-cost="day.hotel.estimated_cost" :price-range="day.hotel.price_range"
+                :hotel-type="day.hotel.type" :distance="day.hotel.distance"
+                :info="getMerchantInfo('hotel', day.hotel)" />
 
               <!-- 餐饮安排 -->
               <a-divider orientation="left">餐饮安排</a-divider>
-              <a-descriptions :column="1" bordered size="small">
-                <a-descriptions-item
-                  v-for="meal in day.meals"
-                  :key="meal.type"
-                  :label="getMealLabel(meal.type)"
-                >
-                  {{ meal.name }}
-                  <span v-if="meal.description"> - {{ meal.description }}</span>
-                </a-descriptions-item>
-              </a-descriptions>
+              <div class="meal-cards">
+                <MerchantCard v-for="(meal, mealIndex) in day.meals" :key="meal.type + '-' + mealIndex"
+                  :city="tripPlan.city" kind="food" :merchant="meal" :meal-label="getMealLabel(meal.type)"
+                  :estimated-cost="meal.estimated_cost" :description="meal.description"
+                  :info="getMerchantInfo('food', meal)" />
+              </div>
             </a-collapse-panel>
           </a-collapse>
         </a-card>
@@ -345,8 +334,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import AttractionVisitInfo from '@/components/AttractionVisitInfo.vue'
+import MerchantCard from '@/components/MerchantCard.vue'
+import { loadMerchantInfos, merchantKey, isGenericMerchant,
+  type MerchantInfo, type MerchantIdentity, type MerchantKind, type MerchantStop } from '@/services/merchantInfo'
 import { loadVisitInfos, visitKey, type VisitInfo } from '@/services/visitInfo'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
@@ -369,7 +361,6 @@ import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
 import type { Attraction, TripPlan } from '@/types'
 import { loadPlacePhotos, photoKey, photoLabel, type PlacePhoto } from '@/services/photos'
-import api from '@/services/api'
 import { saveTripPlan, type TripRecord } from '@/services/trips'
 import { useTrips } from '@/stores/trips'
 
@@ -405,6 +396,33 @@ watch(() => JSON.stringify([
 }, { immediate: true })
 let AMapApi: any = null
 const dailyMaps = new Map<number, any>()
+const merchantInfos = ref<Record<string, MerchantInfo>>({})
+const getMerchantInfo = (kind: MerchantKind, merchant: MerchantIdentity) =>
+  merchantInfos.value[merchantKey(tripPlan.value?.city || '', { kind, merchant })]
+const expandedMerchants = computed<MerchantStop[]>(() => {
+  const keys = Array.isArray(activeDays.value) ? activeDays.value : [activeDays.value]
+  return keys.flatMap(key => {
+    const day = tripPlan.value?.days[Number(key)]
+    if (!day) return []
+    return [...(day.hotel ? [{ kind: 'hotel' as const, merchant: day.hotel }] : []),
+      ...day.meals.map(merchant => ({ kind: 'food' as const, merchant }))]
+  })
+})
+watch(() => JSON.stringify([editMode.value, tripPlan.value?.city,
+  expandedMerchants.value.map(stop => merchantKey(tripPlan.value?.city || '', stop))]), (_current, _previous, cleanup) => {
+  let stale = false
+  cleanup(() => { stale = true })
+  if (!tripPlan.value || editMode.value) return
+  void loadMerchantInfos(tripPlan.value.city, expandedMerchants.value,
+    (key, info) => { merchantInfos.value[key] = info }, () => stale || disposed)
+}, { immediate: true })
+// Refresh map layers only when a newly verified location can supplement a missing one.
+// Supplemental facts stay outside TripPlan and are never included in Save.
+watch(() => JSON.stringify(tripPlan.value?.days.map((_day, index) => getDayMapPoints(index))), () => {
+  if (!AMapApi || disposed || editMode.value) return
+  destroyMaps()
+  nextTick(() => { if (!disposed && AMapApi) { initOverviewMap(AMapApi); initDailyMaps(AMapApi) } })
+})
 
 type MapPointType = 'hotel' | 'attraction' | 'meal'
 
@@ -430,9 +448,7 @@ onMounted(async () => {
     tripPlan.value = JSON.parse(JSON.stringify(data))
     // 加载景点图片
     void loadAttractionPhotos()
-    // 回填缺失的餐饮坐标,旧session里的结果也尽量能显示餐厅点位
-    await loadMissingMealLocations()
-    if (disposed) return
+    // Merchant facts load independently for the expanded day; do not block maps.
     // 等待DOM渲染完成后初始化地图
     await nextTick()
     initMaps()
@@ -578,56 +594,6 @@ const loadAttractionPhotos = async () => {
   if (!tripPlan.value) return
   await loadPlacePhotos(tripPlan.value.city, tripPlan.value.days.flatMap(day => day.attractions),
     (key, photo) => { attractionPhotos.value[key] = photo }, () => disposed)
-}
-
-const isLodgingBreakfastMeal = (type: string, name: string): boolean => {
-  if (type !== 'breakfast') return false
-  return ['酒店早餐', '民宿早餐', '客栈早餐', '住宿早餐'].some(keyword => name.includes(keyword))
-}
-
-const loadMissingMealLocations = async () => {
-  if (!tripPlan.value) return
-
-  let updatedCount = 0
-  const promises: Promise<void>[] = []
-
-  tripPlan.value.days.forEach(day => {
-    day.meals.forEach(meal => {
-      if (isValidLocation(meal.location) || isLodgingBreakfastMeal(meal.type, meal.name)) {
-        return
-      }
-
-      const promise = api.get(
-        `/api/poi/search?keywords=${encodeURIComponent(meal.name)}&city=${encodeURIComponent(tripPlan.value!.city)}&source_role=food`
-      )
-        .then(res => res.data)
-        .then(data => {
-          const poi = Array.isArray(data.data)
-            ? data.data.find((item: any) => isValidLocation(item.location))
-            : null
-
-          if (!poi) return
-
-          if (!meal.address && poi.address) {
-            meal.address = poi.address
-          }
-
-          meal.location = normalizeLocation(poi.location)
-          updatedCount += 1
-        })
-        .catch(err => {
-          console.warn(`餐饮坐标回填失败: ${meal.name}`, err)
-        })
-
-      promises.push(promise)
-    })
-  })
-
-  await Promise.all(promises)
-
-  if (updatedCount > 0 && tripPlan.value) {
-    // Read-time map enrichment stays local; explicit Save persists edits with revision checking.
-  }
 }
 
 const replaceMapSnapshots = (exportContainer: HTMLElement) => {
@@ -1008,14 +974,17 @@ const getDayMapPoints = (dayIndex: number): MapPoint[] => {
   const points: MapPoint[] = []
   const displayHotel = getDisplayHotelForDay(dayIndex)
 
-  if (displayHotel?.hotel && isValidLocation(displayHotel.hotel.location)) {
+  const hotelInfo = displayHotel?.hotel ? getMerchantInfo('hotel', displayHotel.hotel) : undefined
+  const hotelLocation = isValidLocation(displayHotel?.hotel?.location) ? displayHotel?.hotel?.location
+    : hotelInfo?.match_status === 'matched' ? hotelInfo.place?.location : undefined
+  if (displayHotel?.hotel && isValidLocation(hotelLocation)) {
     const hotel = displayHotel.hotel
     points.push({
       type: 'hotel',
       name: hotel.name,
-      address: hotel.address,
+      address: hotelInfo?.place?.address || hotel.address,
       description: displayHotel.isCarriedOver ? '沿用前一晚住处，方便当天出发或取行李' : hotel.distance,
-      location: normalizeLocation(hotel.location),
+      location: normalizeLocation(hotelLocation),
       dayIndex,
       markerText: '住',
       order: 0,
@@ -1042,14 +1011,17 @@ const getDayMapPoints = (dayIndex: number): MapPoint[] => {
   })
 
   day.meals.forEach((meal, mealIndex) => {
-    if (!isValidLocation(meal.location)) return
+    if (isGenericMerchant('food', tripPlan.value!.city, meal.name)) return
+    const info = getMerchantInfo('food', meal)
+    const location = isValidLocation(meal.location) ? meal.location : info?.match_status === 'matched' ? info.place?.location : undefined
+    if (!isValidLocation(location)) return
 
     points.push({
       type: 'meal',
       name: meal.name,
-      address: meal.address,
+      address: info?.place?.address || meal.address,
       description: meal.description,
-      location: normalizeLocation(meal.location),
+      location: normalizeLocation(location),
       dayIndex,
       markerText: getMealMarkerText(meal.type),
       order: 200 + getMealRouteRank(meal.type) + mealIndex,
@@ -1369,6 +1341,7 @@ const destroyMaps = () => {
 .attraction-edit { padding: 4px 0; }
 .hotel-card :deep(.ant-card-head) { background: var(--color-paper, #f7f9f6); }
 .hotel-title { color: var(--color-ink, #203c38); }
+.meal-cards { display: grid; gap: 14px; }
 :deep(.ant-descriptions-item-content) { overflow-wrap: anywhere; }
 .weather-card { background: var(--color-paper, #f7f9f6); }
 .weather-card-sun { background: #fcf8e9; }

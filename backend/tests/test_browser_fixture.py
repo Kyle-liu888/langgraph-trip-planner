@@ -7,7 +7,7 @@ import httpx
 from sqlalchemy import select
 
 from app.database import Account
-from browser_fixture import create_app, fixture_settings
+from browser_fixture import create_app, fixture_settings, merchant_fixture, plan_for_request
 from test_planner_graph import make_request
 
 ORIGIN = "http://127.0.0.1:18081"
@@ -45,7 +45,8 @@ def test_fixture_registration_sse_edit_logout_isolation_and_static_routes(tmp_pa
                     assert page.headers["X-Trip-Test-Fixture"] == "true"
                     assert "connect-src 'self'" in page.headers["Content-Security-Policy"]
                 assert (await client.get("/api/unknown")).status_code == 404
-                for route in ("/api/trips", "/api/poi/photo", "/api/poi/visit-info", "/api/poi/search"):
+                for route in ("/api/trips", "/api/poi/photo", "/api/poi/visit-info", "/api/poi/search",
+                              "/api/poi/merchant-info?kind=hotel&city=北京&name=验收酒店"):
                     assert (await client.get(route)).status_code == 401
 
                 bootstrap = await client.get("/api/auth/session")
@@ -86,6 +87,19 @@ def test_fixture_registration_sse_edit_logout_isolation_and_static_routes(tmp_pa
                 visit = (await client.get("/api/poi/visit-info", params={"visit_date": "2026-10-02"})).json()["data"]
                 assert visit["visit_date"] == "2026-10-02" and visit["status"] == "unavailable"
                 assert (await client.get("/api/poi/search")).json()["data"] == []
+                merchant = (await client.get("/api/poi/merchant-info", params={
+                    "kind": "hotel", "city": "北京", "name": "验收庭院酒店(王府井店)",
+                })).json()["data"]
+                assert merchant["match_status"] == "matched" and merchant["rating"] == "4.6"
+                assert len(merchant["photos"]) == 3
+                assert merchant["links"][0]["verified_at"] != merchant["queried_at"][:10]
+                image = await client.get(merchant["photos"][0]["url"])
+                assert image.status_code == 200 and image.headers["content-type"] == "image/svg+xml"
+                assert "Fixture image" in image.text
+                assert (await client.get("/fixture-assets/merchant-9.svg")).status_code == 404
+                assert merchant["links"][0]["url"].endswith("/999999999999999999.html")
+                assert trip["plan"]["days"][0]["hotel"]["rating"] == "9.9"
+                assert trip["plan"]["days"][0]["meals"][1].get("location") is None
 
                 plan = trip["plan"]
                 plan["days"][0]["attractions"][0]["description"] = "验收编辑已保存"
@@ -123,3 +137,20 @@ def test_fixture_registration_sse_edit_logout_isolation_and_static_routes(tmp_pa
                 assert (await session.scalars(select(Account))).all() == []
 
     asyncio.run(scenario())
+
+
+def test_merchant_fixture_covers_generic_missing_and_shared_hotel():
+    import json
+
+    request = make_request().model_copy(update={"travel_days": 3, "end_date": "2026-10-03"})
+    plan = json.loads(plan_for_request(request))
+    assert plan["days"][0]["hotel"] == plan["days"][2]["hotel"]
+    for name, status in (("酒店自助早餐", "generic"), ("验收无资料餐馆(前门店)", "unmatched")):
+        data = merchant_fixture("food", "北京", name, 18081)
+        assert data["match_status"] == status and data["photos"] == []
+        assert data["links"] == [] and data["source"] is None
+    food = merchant_fixture("food", "北京", "验收烤鸭馆(王府井店)", 18081)
+    assert food["food_tags"] == ["模拟烤鸭", "模拟家常菜"]
+    for url in [photo["url"] for photo in food["photos"]]:
+        assert url.startswith(ORIGIN + "/fixture-")
+    assert food["links"][0]["url"] == "https://www.dianping.com/shop/fixturemerchant"

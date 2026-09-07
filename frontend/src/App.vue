@@ -37,12 +37,14 @@ import BrandMark from './components/BrandMark.vue'
 import { travelTheme } from './styles/theme'
 import { useAuth } from './stores/auth'
 import { useTrips } from './stores/trips'
+import { clearMerchantCache } from './services/merchantInfo'
 const auth = useAuth(), trips = useTrips(), route = useRoute(), router = useRouter()
 const menuOpen = ref(false)
 watch(() => route.fullPath, () => { menuOpen.value = false })
 watch(() => auth.user?.id, id => {
   // Auth changes can unmount the sidebar before its navigation event is emitted.
   menuOpen.value = false
+  clearMerchantCache()
   trips.reset()
   if (id) void trips.load()
   else if (route.path.startsWith('/trips/')) void router.replace('/login')

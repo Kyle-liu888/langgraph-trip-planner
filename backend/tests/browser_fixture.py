@@ -33,7 +33,7 @@ if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -95,12 +95,61 @@ def plan_for_request(request: TripRequest) -> str:
             name=name, poi_id=poi_id, description="模拟景点，用于验证页面交互，不代表真实推荐。",
             location={"longitude": longitude, "latitude": latitude},
         )
+        day["hotel"] = {
+            "name": "验收庭院酒店(王府井店)", "address": "北京市东城区模拟胡同8号",
+            "location": {"longitude": 116.4101, "latitude": 39.9131},
+            "price_range": "300-400元", "rating": "9.9", "distance": "模拟位置",
+            "type": "经济型酒店", "estimated_cost": 350,
+        }
+        day["meals"] = [
+            {"type": "breakfast", "name": "酒店自助早餐", "estimated_cost": 0,
+             "description": "是否包含早餐请向酒店确认。"},
+            {"type": "lunch", "name": "验收烤鸭馆(王府井店)",
+             "address": "北京市东城区模拟街16号", "estimated_cost": 80,
+             "description": "行程中的用餐建议，不是平台评论。"},
+            {"type": "dinner", "name": "验收无资料餐馆(前门店)",
+             "address": "北京市东城区模拟街28号", "estimated_cost": 100,
+             "description": "用于检查资料缺失时的页面降级。"},
+        ]
         plan["days"].append(day)
         plan["weather_info"].append({**original_weather, "date": day_date,
                                      "day_weather": "测试天气", "night_weather": "测试天气"})
     plan["overall_suggestions"] = "这是隔离验收数据；模型、地图、天气均未调用真实服务。"
     plan["budget"] = {key: value * request.travel_days for key, value in plan["budget"].items()}
     return json.dumps(plan, ensure_ascii=False)
+
+
+def merchant_fixture(kind: str, city: str, name: str, port: int) -> dict:
+    """Deliberately synthetic sources: never claim these are real merchant links."""
+    queried_at = "2026-09-07T08:00:00+00:00"
+    result = {
+        "match_status": "unmatched", "data_status": "no_data",
+        "message": "隔离验收：暂无可核验门店资料", "place": None,
+        "photos": [], "rating": None, "food_tags": [], "source": None,
+        "links": [], "queried_at": queried_at,
+    }
+    if name in {"酒店早餐", "酒店自助早餐", "当地小吃"}:
+        return {**result, "match_status": "generic", "message": "通用用餐安排，不对应具体门店"}
+    if name not in {"验收庭院酒店(王府井店)", "验收烤鸭馆(王府井店)"}:
+        return result
+    hotel = kind == "hotel"
+    address = "北京市东城区模拟胡同8号" if hotel else "北京市东城区模拟街16号"
+    return {**result,
+        "match_status": "matched", "data_status": "available",
+        "message": "隔离验收：仅用于页面测试的模拟资料",
+        "place": {"poi_id": "FIXTURE_HOTEL" if hotel else "FIXTURE_FOOD", "name": name,
+                  "address": address, "city": city,
+                  "location": {"longitude": 116.4101 if hotel else 116.4151, "latitude": 39.9131}},
+        "photos": [{"url": f"http://127.0.0.1:{port}/fixture-assets/merchant-{index}.svg",
+                    "title": f"模拟照片 {index}"} for index in range(1, 4)],
+        "rating": "4.6" if hotel else "4.7", "food_tags": [] if hotel else ["模拟烤鸭", "模拟家常菜"],
+        "source": {"name": "高德地图（隔离模拟）", "url": f"https://uri.amap.com/marker?poiid=FIXTURE_{'HOTEL' if hotel else 'FOOD'}",
+                   "queried_at": queried_at},
+        "links": [{"platform": "ctrip" if hotel else "dianping", "label": "携程" if hotel else "大众点评",
+                   "url": "https://hotels.ctrip.com/hotels/999999999999999999.html" if hotel
+                       else "https://www.dianping.com/shop/fixturemerchant",
+                   "verified_at": "2026-09-01"}],
+    }
 
 
 class FixtureContextBuilder(StubContextBuilder):
@@ -190,6 +239,23 @@ def create_app(dist: Path | None = None, *, port: int = 18081, model_delay: floa
             "fetched_at": "", "upstream_updated_at": None, "official": None,
             "notice": "隔离验收：未查询真实开放时间；攻略入口仍可正常检查。",
         }}
+
+    @app.get("/api/poi/merchant-info")
+    async def merchant_info(kind: str, city: str, name: str, user=Depends(require_user)):
+        return {"success": True, "data": merchant_fixture(kind, city, name, port)}
+
+    @app.get("/fixture-assets/merchant-{index}.svg")
+    async def merchant_image(index: int):
+        if index not in (1, 2, 3):
+            raise HTTPException(404)
+        # Local placeholder artwork is test data, not generated or fetched merchant imagery.
+        colors = {1: "#dfd2ba", 2: "#c2d3c8", 3: "#d6c6bd"}
+        return Response(
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320">'
+            f'<rect width="480" height="320" fill="{colors[index]}"/>'
+            f'<text x="40" y="165" font-size="32" fill="#324c43">Fixture image {index}</text></svg>',
+            media_type="image/svg+xml",
+        )
 
     @app.get("/{path:path}", include_in_schema=False)
     async def frontend(path: str):
