@@ -94,8 +94,13 @@ describe('itinerary navigation and presentation', () => {
 
   it('preserves budget caveats and edit/cancel actions in the new layout', async () => {
     expect(root.textContent).toContain('景点门票（估算）')
-    expect(root.textContent).toContain('¥0（仅预算参考）')
-    expect(root.textContent).toContain('是否免费、实际票价及优惠以官方政策为准')
+    expect(root.textContent).toContain('门票预算估算：¥0')
+    expect(root.textContent).not.toContain('实际票价及优惠以官方政策为准')
+    root.querySelector<HTMLButtonElement>('[aria-label="门票与开放信息说明"]')!.click()
+    await nextTick()
+    expect(document.querySelector('.info-hint-panel')?.textContent).toContain('零估算不代表免费，实际票价及优惠以官方政策为准')
+    document.querySelector<HTMLButtonElement>('[aria-label="关闭说明"]')!.click()
+    await nextTick()
     Array.from(root.querySelectorAll('button')).find(button => button.textContent?.includes('编辑行程'))!.click()
     await nextTick()
     expect(root.querySelector('.attraction-edit')).not.toBeNull()
