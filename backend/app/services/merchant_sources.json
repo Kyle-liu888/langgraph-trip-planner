@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "kind": "food",
+      "city": "北京",
+      "name": "花家怡园(四合院总店)",
+      "address": "东直门内大街235号",
+      "poi_ids": ["B000A9KC22"],
+      "location": {"longitude": 116.418952, "latitude": 39.941723},
+      "links": [
+        {
+          "platform": "dianping",
+          "url": "https://www.dianping.com/shop/507755",
+          "verified_at": "2026-09-07"
+        }
+      ]
+    }
+  ]
+}

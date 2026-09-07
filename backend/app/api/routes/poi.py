@@ -10,9 +10,26 @@ from ...observability import logger
 from ...planner.amap import AmapPlannerClient
 from ...services.amap_service import get_amap_service
 from ...services.poi_photo_service import get_poi_photo_service
+from ...models.merchant_info import MerchantInfoResponse, MerchantKind
+from ...services.merchant_info_service import get_merchant_info_service
 
 router = APIRouter(prefix="/poi", tags=["POI"])
 SEARCH_SOURCE_ROLES = {"food", "scenic", "hotel"}
+
+
+@router.get("/merchant-info", response_model=MerchantInfoResponse, summary="核验餐饮与住宿门店资料（非实时价格或评论聚合）")
+def get_merchant_info(
+    kind: MerchantKind,
+    name: str = Query(min_length=1, max_length=120),
+    city: str = Query(min_length=1, max_length=80),
+    address: str = Query(default="", max_length=300),
+    poi_id: str = Query(default="", max_length=40, pattern=r"^[A-Za-z0-9_-]*$"),
+    longitude: float | None = Query(default=None, ge=-180, le=180, allow_inf_nan=False),
+    latitude: float | None = Query(default=None, ge=-90, le=90, allow_inf_nan=False),
+):
+    if (longitude is None) != (latitude is None):
+        raise HTTPException(422, {"code": "INVALID_LOCATION", "message": "经纬度须同时提供"})
+    return {"success": True, "data": get_merchant_info_service().resolve(kind, name, city, address, poi_id, longitude, latitude)}
 
 
 @router.get("/visit-info", summary="景点开放时间与官方来源（非实时票务）")
