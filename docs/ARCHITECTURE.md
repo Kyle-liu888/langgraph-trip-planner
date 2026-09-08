@@ -1,6 +1,6 @@
 # 架构设计
 
-本文解释当前本地账号分支的真实实现，供维护代码和讲解设计取舍使用。日常启动看[本地隔离开发手册](LOCAL_DEV_GUIDE.md)，源码定位看[项目目录](../PROJECT_STRUCTURE.md)。这里的“智能”来自已接入模型的在线推理，不包含后训练、LoRA 或模型权重部署。
+本文解释当前自建账号、LangGraph 工作流与单机云部署的真实实现，供维护代码和讲解设计取舍使用。日常启动看[本地隔离开发手册](LOCAL_DEV_GUIDE.md)，源码定位看[项目目录](../PROJECT_STRUCTURE.md)。这里的“智能”来自已接入模型的在线推理，不包含后训练、LoRA 或模型权重部署。
 
 ## 设计目标
 
@@ -11,7 +11,7 @@
 
 ## 运行边界与一趟请求
 
-Windows 提供 Docker Desktop、编辑器和浏览器；代码在 WSL2 Ubuntu 文件系统。一个非 root 项目容器运行 Python 3.13 后端和 Node 24 前端，共享的 PostgreSQL 17 使用独立容器、数据卷及项目专用账号。
+本地开发时，Windows 提供 Docker Desktop、编辑器和浏览器；代码在 WSL2 Ubuntu 文件系统。一个非 root 项目容器运行 Python 3.13 后端和 Node 24 前端，共享的 PostgreSQL 17 使用独立容器、数据卷及项目专用账号。
 
 ```text
 浏览器 Vue 页面（127.0.0.1:5173）
@@ -27,7 +27,19 @@ Windows 提供 Docker Desktop、编辑器和浏览器；代码在 WSL2 Ubuntu �
   └─ GET /api/trips/{id} ← 行程结果，再异步加载图片和实用信息
 ```
 
-前端不直连数据库、不持有后端模型 Key。API、数据库和页面仅发布本机回环端口；容器内部监听 `0.0.0.0` 是端口转发的需要，不是公网部署。
+前端不直连数据库、不持有后端模型 Key。以上是开发拓扑，只发布本机回环端口；生产使用独立 Compose 栈与数据库。
+
+## 单机生产拓扑、恢复与扩展边界
+
+线上位于阿里云 ECS。三个常驻容器为 web（Caddy/静态 Vue/个人入口）、backend（FastAPI/RunManager）、postgres；migrate 是启动前执行的短任务。个人入口 `/` 与旅行应用 `/trips/new` 共享来源，Caddy 将 API 和 SSE 转发到 backend。后端和数据库不发布宿主机端口。
+
+规划 Worker 是后台执行职责，当前嵌在唯一的 Uvicorn 进程中。请求提交业务事务后创建 asyncio Task，浏览器离开不会取消任务；检查点和事件持久化到 PostgreSQL。不能将“前端、API、Worker、数据库”四个逻辑模块等同于四个常驻容器。
+
+生产模式启动失败时退出；`/health/ready` 同时探测业务数据库和持有 advisory lock 的 Checkpointer 会话。会话丢失后停止接收新任务，监督进程连续发现未就绪会结束 Uvicorn，由 Docker 重启后端。只标记容器 unhealthy 不会让 Docker 自动重启，所以需要这层监督。
+
+这保证的是单机进程恢复，不是不中断服务的高可用。实例、磁盘和 PostgreSQL 仍是单点；没有独立消息队列、多副本任务接管或主备数据库。直接增加 backend 副本会与全局数据库会话锁冲突。后续扩展需要先拆分 API/Worker、设计任务租约和接管，再配置负载均衡与数据库容灾。
+
+配置、内存上限、日志、更新和备份步骤见[云部署手册](CLOUD_DEPLOYMENT.md)。
 
 ## LangGraph状态机
 
@@ -145,11 +157,11 @@ API响应的`metadata`可包含：
 - 运行状态为 queued / running / completed / fallback / failed / interrupted；fallback 有独立警告，不能当作正常模型成功。
 - 版本号 revision 防止结果被两个编辑页面静默覆盖。删除行程会删除业务记录及检查点，不返还已使用额度。
 
-本地版仅支持单后端进程，持有数据库会话 advisory lock，防止第二进程误判正在运行的任务。任务不是分布式队列；数据库连接断开可能需要重启后端再恢复。外部 API 无法保证 exactly-once，中断中的模型调用恢复时可能再次计费。
+本地与当前生产版均只支持单后端进程，持有数据库会话 advisory lock，防止第二进程误判正在运行的任务。任务不是分布式队列；生产由就绪检查与监督进程协调后端重启，开发环境可能需要手动重启后恢复。外部 API 无法保证 exactly-once，中断中的模型调用恢复时可能再次计费。
 
-日志位于 backend/logs/app.log、error.log，并输出到控制台。HTTP 请求关联 request_id，后台执行关联 trip_id / run_id，节点记录 node / attempt / elapsed_ms。异常保留类型和代码栈位置，不记录包含用户输入的完整异常正文。业务数据库和检查点本身仍会保存行程内容。
+开发日志位于 backend/logs/app.log、error.log，并输出到控制台；生产关闭文件日志，采用 JSON 控制台输出及 Docker 日志轮转。HTTP 请求关联 request_id，后台执行关联 trip_id / run_id，节点记录 node / attempt / elapsed_ms。异常保留类型和代码栈位置，不记录包含用户输入的完整异常正文。业务数据库和检查点本身仍会保存行程内容。
 
-两类日志各按 10 MiB 轮转、保留 5 个备份，`LOG_FORMAT=json` 可切换结构化日志。`model.failed`、`validation.failed` 等事件可能是 WARNING，只看 `error.log` 会漏掉它们。`/health` 报告启动时建立的运行管理器是否就绪，不是每次实时执行数据库探针。
+开发环境两类文件日志各按 10 MiB 轮转、保留 5 个备份，`LOG_FORMAT=json` 可切换结构化日志。`model.failed`、`validation.failed` 等事件可能是 WARNING，只看 `error.log` 会漏掉它们。`/health` 报告启动时建立的运行管理器是否就绪，不是每次实时执行数据库探针。
 
 ## 结果页数据与可信程度
 
@@ -169,4 +181,4 @@ API响应的`metadata`可包含：
 
 修改时建议按职责定位：规划规则改 `planner/`，模型兼容改 `llm/`，流程和状态改 `graph/`，认证及持久化改路由／服务与迁移；展示数据只改对应查询服务和结果组件。每次保留模拟测试，再按风险选择真实数据库或浏览器验收，不自动消费真实模型额度。
 
-完整本地配置、备份和启动方式见[本地隔离开发手册](LOCAL_DEV_GUIDE.md)。旧 `SUPABASE_LOCAL_SETUP.md` 只保留历史背景，不适用于当前启动流程。未来公网部署、多进程调度、邮件验证、实时票务都属于新范围，不是当前已实现能力。
+完整本地配置、备份和启动方式见[本地隔离开发手册](LOCAL_DEV_GUIDE.md)，已上线的单机方案见[云部署手册](CLOUD_DEPLOYMENT.md)。旧 `SUPABASE_LOCAL_SETUP.md` 只保留历史背景，不适用于当前启动流程。多进程调度、邮件验证、实时票务仍未实现。

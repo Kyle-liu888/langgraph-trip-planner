@@ -1,5 +1,7 @@
 """FastAPI application for the LangGraph trip planner."""
 
+import asyncio
+
 from contextlib import asynccontextmanager, AsyncExitStack
 from time import perf_counter
 from uuid import uuid4
@@ -31,6 +33,8 @@ async def lifespan(application: FastAPI):
     configure_logging(settings)
     application.state.run_manager = None
     application.state.auth_sessions = None
+    application.state.storage_engine = None
+    application.state.checkpoint_saver = None
     engine = None
     async with AsyncExitStack() as stack:
         stage = "configuration"
@@ -55,6 +59,7 @@ async def lifespan(application: FastAPI):
                 stage = "checkpoint_tables"
                 saver = AsyncPostgresSaver(connection)
                 await saver.setup()
+                application.state.checkpoint_saver = saver
                 stage = "model_configuration"
                 planner = TripPlannerService(settings=settings, checkpointer=saver)
                 expected_budget = settings.llm_timeout * settings.planner_max_attempts + 30
@@ -65,12 +70,19 @@ async def lifespan(application: FastAPI):
                         "hint": "整体时间预算可能在模型重试结束前耗尽"})
                 runs = RunManager(sessions, planner, saver, settings)
                 await runs.recover_interrupted()
+                application.state.storage_engine = engine
                 application.state.run_manager = runs
                 logger.info("storage.ready")
             else:
+                if settings.app_env == "production":
+                    raise RuntimeError("DATABASE_URL is required in production")
                 logger.warning("storage.not_configured", extra={"hint": "Configure DATABASE_URL and run alembic upgrade head"})
         except Exception:
             logger.exception("storage.startup_failed", extra={"stage": stage})
+            if settings.app_env == "production":
+                if engine:
+                    await engine.dispose()
+                raise
         logger.info("server.started", extra={"port": settings.port, "logs": str(settings.log_dir)})
         try:
             yield
@@ -168,3 +180,31 @@ async def health() -> dict:
         "service": settings.app_name,
         "version": settings.app_version,
     }
+
+
+@app.get("/health/live")
+async def liveness() -> dict:
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+async def readiness(request: Request):
+    state = request.app.state
+    runs = getattr(state, "run_manager", None)
+    engine = getattr(state, "storage_engine", None)
+    saver = getattr(state, "checkpoint_saver", None)
+    ready = bool(runs and not runs.closing and engine and saver)
+    if ready:
+        try:
+            async with asyncio.timeout(4):
+                async with engine.connect() as db:
+                    await db.execute(text("SELECT 1"))
+                # Probe the same session that holds task ownership; never reconnect it here.
+                async with saver.lock:
+                    await saver.conn.execute("SELECT 1")
+        except Exception:
+            ready = False
+            # Stop admitting work while the supervisor arranges a restart.
+            runs.closing = True
+    return JSONResponse({"status": "ready" if ready else "not_ready"},
+                        status_code=200 if ready else 503)

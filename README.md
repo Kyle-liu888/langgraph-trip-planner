@@ -4,12 +4,20 @@
 
 本项目只有在线推理，不包含模型后训练、训练数据、LoRA 权重或本地训练服务。
 
-当前开发方式是 **WSL2 Ubuntu + 非 root 开发容器 + 共享本地 PostgreSQL**。前端、后端和数据库在本机运行，账号不依赖 Supabase；模型和高德仍是外部 API，可能需要联网和付费。这里没有公网部署，也不要求在 Windows 全局安装 Python、Node 或数据库服务。
+项目已部署到阿里云单台 ECS，包含个人作品集入口和可公开注册的旅行助手：
+
+- **个人入口：** [http://8.163.48.116](http://8.163.48.116/)。
+- **直接体验：** [打开旅行助手](http://8.163.48.116/trips/new)。
+
+2026-09-08 已通过公网注册登录、真实行程生成、SSE、地图与历史保存验收。当前使用 HTTP，尚未配置域名和 HTTPS；单机部署不是多机高可用，详细结果和限制见[部署与维护手册](docs/CLOUD_DEPLOYMENT.md)。
+
+开发仍使用 **WSL2 Ubuntu + 非 root 开发容器 + 共享本地 PostgreSQL**；生产使用独立数据库与数据卷，不依赖开发电脑持续开机。账号不依赖 Supabase；模型和高德是外部 API，可能需要联网和付费。无需在 Windows 全局安装 Python、Node 或数据库服务。
 
 ## 从哪里开始
 
 | 你要做什么 | 阅读入口 |
 | --- | --- |
+| 云服务器部署、发布、端口、备份与排错 | [单机云部署与维护](docs/CLOUD_DEPLOYMENT.md) |
 | 第一次安装或日常启动、停机、备份、排错 | [本地隔离开发手册](docs/LOCAL_DEV_GUIDE.md) |
 | 理解请求、模型、数据库和 SSE 如何协作 | [架构设计](docs/ARCHITECTURE.md) |
 | 找到功能对应的源码文件 | [项目目录](PROJECT_STRUCTURE.md) |
@@ -29,9 +37,9 @@
 - LangGraph 显式管理失败重试、校验反馈、多候选 Rerank 和确定性 fallback。
 - 返回供应商、模型、结构化策略、尝试次数和 Token usage 等可观测元数据。
 - Vue 页面展示每日行程、地图、天气与预算，并支持导出。
-- 本地邮箱标识＋密码登录；账号侧边栏支持历史、新增、重命名、删除，编辑结果保存到本地数据库。
+- 自建邮箱标识＋密码登录；账号侧边栏支持历史、新增、重命名、删除，编辑结果保存到部署环境的数据库。
 - SSE 展示真实 LangGraph 节点和模型调用状态；断线重放，刷新不重复发起规划。
-- 本地 PostgreSQL Checkpointer 支持中断后手动恢复，日志可按请求/行程/运行编号定位。
+- PostgreSQL Checkpointer 支持中断后手动恢复，日志可按请求/行程/运行编号定位。
 - 景点图片按地点身份匹配；结果页异步展示高德开放时间参考、已核验官方入口和第三方攻略入口，查询失败不阻塞行程与地图。
 - 门票显示为预算估算，不是实时票价；估算为零不代表已确认免费。没有自动预约、实时余票或自动闭馆日期校验。
 - 餐饮与住宿按具体分店异步核验地址、参考照片和评分；精确平台入口来自人工登记，小红书单独标为搜索。未知链接省略，不抓取评论，不回写历史或增加模型调用。
@@ -66,6 +74,8 @@ Vue 3
 
 `retry` 是返回 `generate_candidate` 的条件边，不是独立节点。模型对象和外部服务通过 LangGraph runtime context 注入，图节点不导入供应商专用模型类。照片、开放时间与攻略入口属于结果展示链路，不加入规划模型上下文。
 
+生产有 **3 个常驻容器**：Caddy/静态前端、FastAPI、PostgreSQL；另有一次性的 migrate 任务。规划 Worker 由 FastAPI 进程内的 RunManager 承担，没有单独的 Worker 容器。网站首页是个人入口，`/trips/new` 进入 Vue 项目。详见[生产拓扑](docs/CLOUD_DEPLOYMENT.md#容器如何协作)。
+
 ## 技术栈
 
 - 后端：Python 3.11–3.13（开发容器固定 3.13）、FastAPI、LangChain、LangGraph、Pydantic、httpx、uv
@@ -73,6 +83,7 @@ Vue 3
 - 可选模型集成：Anthropic、Google GenAI、Ollama
 - 前端：Node 24（开发容器）、Vue 3、TypeScript、Vite、Ant Design Vue、高德地图 Web JS API
 - 持久化：PostgreSQL 17、SQLAlchemy、Alembic、LangGraph PostgreSQL Checkpointer
+- 部署：Docker Engine、Compose、Caddy 静态服务与反向代理、持久化数据卷
 - 测试：pytest、Fake Chat Model、Vitest；浏览器验收范围另见验收记录
 
 ## 本地隔离环境快速开始
@@ -132,7 +143,9 @@ npm run build
 
 ## API
 
-- `GET /api/auth/session`：查询本地会话，获取页面所需的 CSRF 信息
+- `GET /health/live`：API 进程存活检查
+- `GET /health/ready`：业务数据库与 Checkpointer 会话实时就绪检查，不可用返回 503
+- `GET /api/auth/session`：查询会话，获取页面所需的 CSRF 信息
 - `POST /api/auth/register`、`POST /api/auth/login`：本地邮箱标识＋密码注册／登录
 - `POST /api/auth/logout`：撤销当前会话
 - `POST /api/trips`：创建后台任务，返回 202；要求已登录 Cookie、CSRF／Origin 校验及 `X-Idempotency-Key` UUID
@@ -161,7 +174,7 @@ npm run build
 - 邮箱只是本地账号标识，不代表邮箱所有权已验证；暂无邮件找回密码或 GitHub 登录，也没有默认账号或匿名绕过。
 - 业务查询显式绑定当前用户 ID。数据库业务表启用 RLS、没有浏览器访问策略；应用使用本项目数据库 owner，用户级隔离依靠后端鉴权和查询过滤，不能把 RLS 描述为应用连接自动隔离用户。
 - 模型 Key 和后端高德 Web 服务 Key 不发送给浏览器；浏览器地图 SDK 使用单独的 Web 端配置。检查点和业务历史包含行程内容，备份也属于隐私数据。日志不记录完整提示词、模型正文和密钥，但不能把日志脱敏等同于数据库不保存内容。
-- 当前仅面向本地单进程运行，不是上线部署方案。新增部署前仍需独立审视全站限流、预算、备份、监控和域名/CORS。
+- 当前线上保持单后端进程，数据库/API 端口不暴露公网；有容器重启策略、实时就绪检查和手动备份。尚无多机容灾、定时异地备份、全站费用硬上限或监控告警；每账号额度不能防止通过公开注册创建多个账号。
 
 ## 已知边界
 

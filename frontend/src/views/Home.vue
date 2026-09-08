@@ -291,6 +291,7 @@ import {
   TeamOutlined
 } from '@ant-design/icons-vue'
 import { createTrip } from '@/services/trips'
+import { newIdempotencyKey } from '@/services/idempotency'
 import { useTrips } from '@/stores/trips'
 import api from '@/services/api'
 import { validateCity } from '@/services/destination'
@@ -478,7 +479,7 @@ const handleSubmit = async () => {
     }
 
     const body = JSON.stringify(requestData)
-    if (body !== pendingBody) { pendingBody = body; pendingKey = crypto.randomUUID() }
+    if (body !== pendingBody) { pendingBody = body; pendingKey = newIdempotencyKey() }
     const trip = await createTrip(requestData, pendingKey)
     trips.upsert(trip)
     await router.push(`/trips/${trip.id}`)

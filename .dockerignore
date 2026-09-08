@@ -1,0 +1,14 @@
+.git
+**/.env
+**/.env.*
+**/.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/.pytest_cache
+**/logs
+.cache
+deploy/secrets
+deploy/releases
+**/*.dump
+**/*.db

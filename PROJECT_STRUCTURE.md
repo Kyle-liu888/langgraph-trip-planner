@@ -12,6 +12,9 @@
 langgraph-trip-planner/
 ├── .devcontainer/        # 项目开发容器、非 root 运行环境
 ├── .vscode/tasks.json    # 容器内迁移、前后端启动、测试任务
+├── compose.prod.yaml    # 独立生产栈：web、backend、postgres 和 migrate
+├── deploy/              # Dockerfile、Caddy、配置模板与运维命令
+│   └── portal/          # 个人作品集首页，按钮进入 /trips/new
 ├── infra/               # 共享服务模板和项目环境配置
 ├── scripts/             # 环境管理、备份恢复、停止与安全检查
 ├── backend/
@@ -20,6 +23,7 @@ langgraph-trip-planner/
 │   │   ├── auth.py       # 不透明会话、Origin 与 CSRF 校验
 │   │   ├── database.py   # 账号、会话、行程、运行、事件、额度表
 │   │   ├── config.py     # 环境配置与默认值（不是私有配置内容）
+│   │   ├── production.py # 生产迁移入口、单 Uvicorn 进程监督与退出
 │   │   ├── observability.py # 脱敏轮转日志、节点埋点、进度事件
 │   │   ├── graph/        # State、Runtime、节点、边、Prompt
 │   │   ├── llm/          # 模型配置、工厂、能力与结构化输出
@@ -68,12 +72,16 @@ langgraph-trip-planner/
 | 高德地图与路线 | `backend/app/services/amap_service.py`、`backend/app/api/routes/map.py`；`frontend/src/views/Result.vue` | 后端 Web 服务与浏览器地图 SDK 各自使用对应配置 |
 | 主题与响应式布局 | `frontend/src/styles/theme.css`、`frontend/src/styles/theme.ts`、`frontend/src/App.vue` 及各页面组件 | 统一主题；修改时保留表单、认证、SSE 和保存行为 |
 | 数据库结构 | `backend/app/database.py`、`backend/migrations/versions/` | 业务表由 Alembic 维护，检查点表由 PostgreSQL Saver setup 管理 |
+| 云端发布、健康检查与备份 | `compose.prod.yaml`、`deploy/manage.sh`、`backend/app/production.py`、`backend/app/api/main.py` | 三个常驻容器，失败退出、就绪检查、手动备份；不是多机高可用 |
+| 个人入口与网站路由 | `deploy/portal/index.html`、`deploy/Caddyfile`、`deploy/web.Dockerfile` | 静态首页与 Vue 项目共享 web 容器；API/SSE 同源反向代理 |
+| HTTP 提交兼容 | `frontend/src/services/idempotency.ts`、`frontend/src/views/Home.vue` | HTTP 缺少 randomUUID 时用 getRandomValues 生成 UUID v4 |
 | 日常环境管理 | `scripts/dev.py`、`scripts/container-setup.sh`、`.vscode/tasks.json` | 环境启动不等于前后端已启动；共享数据库独立启停 |
 
 上表路径除特别注明均从仓库根目录开始。前端测试与组件相邻，后端测试集中在 `backend/tests/`。如果改的是 UI，不要顺带调整模型流程或数据库表；如果改了数据库结构，需新增迁移并验证原有历史兼容。
 
 ## 文档维护入口
 
+- 线上访问、配置与运维：[CLOUD_DEPLOYMENT.md](docs/CLOUD_DEPLOYMENT.md)。
 - 新人启动：[LOCAL_DEV_GUIDE.md](docs/LOCAL_DEV_GUIDE.md)。
 - 技术流程与恢复边界：[ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 - 面试讲解：[INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md)。

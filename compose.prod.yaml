@@ -1,0 +1,112 @@
+name: trip-production
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-backend: &backend
+  image: trip-planner-backend:${RELEASE:?Set RELEASE}
+  build:
+    context: .
+    dockerfile: deploy/backend.Dockerfile
+    args:
+      PYTHON_IMAGE: ${PYTHON_IMAGE:?Use image lock}
+      UV_IMAGE: ${UV_IMAGE:?Use image lock}
+  env_file: [./deploy/secrets/backend.env]
+  environment:
+    APP_ENV: production
+    DEBUG: "false"
+    CORS_ORIGINS: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN}
+    SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+    FORWARDED_ALLOW_IPS: ${PROXY_SUBNET:-172.30.240.0/24}
+    MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-2}
+    LOG_FORMAT: json
+    LOG_FILE_ENABLED: "false"
+  init: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: *logging
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?Use image lock}
+    environment:
+      POSTGRES_USER: trip_admin
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets: [admin_password, app_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/init-database.sh:/docker-entrypoint-initdb.d/10-project.sh:ro
+    networks: [database]
+    restart: unless-stopped
+    shm_size: 128mb
+    mem_limit: 1g
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "work_mem=4MB"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trip_admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    stop_grace_period: 60s
+    logging: *logging
+  migrate:
+    <<: *backend
+    command: ["python", "-m", "app.production", "migrate"]
+    networks: [database]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+  backend:
+    <<: *backend
+    networks: [proxy, database]
+    volumes: [planner_cache:/app/.cache]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+    mem_limit: 1800m
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=5)"]
+      interval: 15s
+      timeout: 6s
+      retries: 3
+      start_period: 60s
+  web:
+    image: trip-planner-web:${RELEASE:?Set RELEASE}
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:?Use image lock}
+        CADDY_IMAGE: ${CADDY_IMAGE:?Set pinned CADDY_IMAGE}
+        VITE_AMAP_WEB_JS_KEY: ${VITE_AMAP_WEB_JS_KEY:?Set browser map key}
+    environment:
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:?Set CADDY_SITE_ADDRESS}
+    ports:
+      - "${HTTP_BIND:-80}:80"
+      - "${HTTPS_BIND:-443}:443"
+    volumes: [caddy_data:/data, caddy_config:/config]
+    networks: [proxy]
+    depends_on:
+      backend: {condition: service_healthy}
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+networks:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_SUBNET:-172.30.240.0/24}
+  database:
+    internal: true
+volumes:
+  postgres_data:
+  planner_cache:
+  caddy_data:
+  caddy_config:
+secrets:
+  admin_password:
+    file: ./deploy/secrets/admin_password
+  app_password:
+    file: ./deploy/secrets/app_password

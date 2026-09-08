@@ -1,0 +1,26 @@
+{
+    admin off
+}
+{$CADDY_SITE_ADDRESS} {
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+    @portal path /
+  handle @portal {
+    root * /srv/portal
+    file_server
+  }
+  @backend path /api /api/* /health /health/*
+    handle @backend {
+        reverse_proxy backend:8000 {
+            flush_interval -1
+        }
+    }
+    handle {
+        root * /srv/trip
+        try_files {path} /index.html
+        file_server
+    }
+}

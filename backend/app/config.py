@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    app_env: str = "development"
     app_name: str = "LangGraph 智能旅行助手"
     app_version: str = "2.0.0"
     debug: bool = False
